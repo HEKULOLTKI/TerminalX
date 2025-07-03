@@ -1,0 +1,183 @@
+/* TerminalX 双栏布局样式 */
+
+/* CSS变量定义 */
+:root {
+  --terminal-width: 60%;
+  --ai-width: 40%;
+  --sidebar-width: 250px;
+  --resize-handle-width: 4px;
+  --ai-min-width: 300px;
+  --ai-collapsed-width: 50px;
+  
+  /* 动画时长 */
+  --transition-duration: 0.3s;
+  
+  /* 边框和间距 */
+  --border-radius: 8px;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+}
+
+/* 应用主容器 */
+.app-container {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  background: var(--el-bg-color);
+}
+
+/* 终端区域样式增强 */
+.terminal-section {
+  position: relative;
+  border-right: 1px solid var(--el-border-color-light);
+}
+
+/* 分隔条增强样式 */
+.resize-handle {
+  user-select: none;
+  touch-action: none;
+}
+
+.resize-handle:active,
+.resize-handle.resizing {
+  background: var(--el-color-primary) !important;
+}
+
+/* 响应式适配 */
+@media (max-width: 1200px) {
+  :root {
+    --terminal-width: 55%;
+    --ai-width: 45%;
+  }
+}
+
+@media (max-width: 900px) {
+  :root {
+    --terminal-width: 50%;
+    --ai-width: 50%;
+    --ai-min-width: 250px;
+  }
+}
+
+@media (max-width: 768px) {
+  .ai-section {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 1000;
+    box-shadow: -4px 0 12px rgba(0, 0, 0, 0.15);
+  }
+  
+  .ai-section.collapsed {
+    transform: translateX(calc(100% - var(--ai-collapsed-width)));
+  }
+  
+  .terminal-section {
+    width: 100% !important;
+  }
+  
+  .resize-handle {
+    display: none;
+  }
+}
+
+/* 性能优化 */
+.terminal-section,
+.ai-section,
+.resize-handle {
+  will-change: width, transform;
+}
+
+/* 无选择状态 */
+.resize-handle,
+.toggle-chat-btn {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* 滚动条统一样式 */
+.terminal-section ::-webkit-scrollbar,
+.ai-section ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.terminal-section ::-webkit-scrollbar-track,
+.ai-section ::-webkit-scrollbar-track {
+  background: var(--el-fill-color-lighter);
+  border-radius: 3px;
+}
+
+.terminal-section ::-webkit-scrollbar-thumb,
+.ai-section ::-webkit-scrollbar-thumb {
+  background: var(--el-border-color);
+  border-radius: 3px;
+  transition: background 0.3s;
+}
+
+.terminal-section ::-webkit-scrollbar-thumb:hover,
+.ai-section ::-webkit-scrollbar-thumb:hover {
+  background: var(--el-border-color-dark);
+}
+
+/* 暗色主题适配 */
+.dark .resize-handle:hover {
+  background: var(--el-color-primary-light-3);
+}
+
+.dark .ai-section {
+  border-left: 1px solid var(--el-border-color-dark);
+}
+
+/* 动画类 */
+.layout-transition {
+  transition: all var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 加载状态 */
+.app-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-size: 16px;
+  color: var(--el-text-color-secondary);
+}
+
+/* 错误状态 */
+.app-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  padding: var(--spacing-xl);
+  text-align: center;
+}
+
+.app-error-icon {
+  font-size: 48px;
+  margin-bottom: var(--spacing-lg);
+  color: var(--el-color-danger);
+}
+
+.app-error-message {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.app-error-detail {
+  font-size: 14px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+} 

@@ -1,0 +1,115 @@
+/* TerminalX 全局样式 */
+
+/* 基础重置 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
+  overflow: hidden;
+}
+
+/* Element Plus 消息框样式覆盖 */
+.el-message {
+  min-width: 200px;
+}
+
+.el-message--success {
+  background-color: var(--el-color-success-light-9);
+  border-color: var(--el-color-success-light-7);
+}
+
+.el-message--error {
+  background-color: var(--el-color-danger-light-9);
+  border-color: var(--el-color-danger-light-7);
+}
+
+/* 深色主题下的消息框 */
+.dark .el-message {
+  background-color: var(--el-bg-color-overlay);
+  border-color: var(--el-border-color);
+  color: var(--el-text-color-primary);
+}
+
+.dark .el-message--success {
+  background-color: #163320;
+  border-color: #274a3b;
+  color: #67c23a;
+}
+
+.dark .el-message--error {
+  background-color: #332222;
+  border-color: #4a3333;
+  color: #f56c6c;
+}
+
+/* 确保xterm.js样式正确加载 */
+.xterm {
+  position: relative;
+}
+
+.xterm.focus,
+.xterm:focus {
+  outline: none;
+}
+
+.xterm .xterm-helpers {
+  position: absolute;
+  top: 0;
+  z-index: 5;
+}
+
+.xterm .xterm-helper-textarea {
+  position: absolute;
+  opacity: 0;
+  left: -9999em;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: -5;
+  white-space: nowrap;
+  overflow: hidden;
+  resize: none;
+}
+
+/* 优化滚动条在所有环境下的显示 */
+.xterm .xterm-viewport {
+  background-color: transparent;
+  overflow-y: scroll;
+  cursor: default;
+  position: absolute;
+  right: 0;
+  left: 0;
+  top: 0;
+  bottom: 0;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar {
+  width: 6px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+/* 深色主题下的滚动条 */
+.dark .xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.dark .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+} 
