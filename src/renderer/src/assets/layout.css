@@ -2,15 +2,13 @@
 
 /* CSS变量定义 */
 :root {
-  --terminal-width: 60%;
-  --ai-width: 40%;
   --sidebar-width: 250px;
-  --resize-handle-width: 4px;
-  --ai-min-width: 300px;
+  --resize-handle-width: 6px;
+  --ai-min-width: 250px;
   --ai-collapsed-width: 50px;
   
   /* 动画时长 */
-  --transition-duration: 0.3s;
+  --transition-duration: 0.2s;
   
   /* 边框和间距 */
   --border-radius: 8px;
@@ -19,6 +17,11 @@
   --spacing-md: 12px;
   --spacing-lg: 16px;
   --spacing-xl: 20px;
+  
+  /* 布局约束 */
+  --min-terminal-width: 25%;
+  --max-terminal-width: 80%;
+  --min-ai-width: 20%;
 }
 
 /* 应用主容器 */
@@ -35,55 +38,119 @@
 .terminal-section {
   position: relative;
   border-right: 1px solid var(--el-border-color-light);
+  min-width: 200px;
 }
 
 /* 分隔条增强样式 */
 .resize-handle {
   user-select: none;
   touch-action: none;
+  position: relative;
+  flex-shrink: 0;
 }
 
 .resize-handle:active,
 .resize-handle.resizing {
+  background: var(--el-color-primary-light-6) !important;
+}
+
+.resize-handle:active .resize-handle-indicator,
+.resize-handle.resizing .resize-handle-indicator {
   background: var(--el-color-primary) !important;
+  height: 100% !important;
+  box-shadow: 0 0 12px rgba(64, 158, 255, 0.5) !important;
+}
+
+/* AI聊天区域样式 */
+.ai-section {
+  position: relative;
+  min-width: var(--ai-min-width);
+}
+
+.ai-section.collapsed {
+  min-width: var(--ai-collapsed-width) !important;
 }
 
 /* 响应式适配 */
 @media (max-width: 1200px) {
   :root {
-    --terminal-width: 55%;
-    --ai-width: 45%;
+    --ai-min-width: 200px;
+    --min-terminal-width: 30%;
+    --max-terminal-width: 75%;
   }
 }
 
 @media (max-width: 900px) {
   :root {
-    --terminal-width: 50%;
-    --ai-width: 50%;
-    --ai-min-width: 250px;
+    --ai-min-width: 180px;
+    --min-terminal-width: 35%;
+    --max-terminal-width: 70%;
   }
 }
 
 @media (max-width: 768px) {
   .ai-section {
-    position: absolute;
+    position: absolute !important;
     right: 0;
     top: 0;
     bottom: 0;
     z-index: 1000;
     box-shadow: -4px 0 12px rgba(0, 0, 0, 0.15);
+    min-width: 250px !important;
+    width: 250px !important;
+    transform: translateX(0);
+    transition: transform var(--transition-duration) ease;
   }
   
   .ai-section.collapsed {
     transform: translateX(calc(100% - var(--ai-collapsed-width)));
+    min-width: var(--ai-collapsed-width) !important;
+    width: var(--ai-collapsed-width) !important;
   }
   
   .terminal-section {
     width: 100% !important;
+    border-right: none;
   }
   
   .resize-handle {
-    display: none;
+    display: none !important;
+  }
+  
+  /* 移动设备上的AI聊天区域样式 */
+  .ai-section .ai-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--el-bg-color-page);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+}
+
+@media (max-width: 480px) {
+  .ai-section {
+    min-width: 200px !important;
+    width: 200px !important;
+  }
+  
+  :root {
+    --ai-collapsed-width: 40px;
+  }
+}
+
+/* 触摸设备优化 */
+@media (pointer: coarse) {
+  .resize-handle {
+    width: 12px; /* 增加触摸区域 */
+  }
+  
+  .resize-handle-indicator {
+    width: 3px;
+    height: 50px;
+  }
+  
+  .resize-handle:hover .resize-handle-indicator {
+    height: 80px;
   }
 }
 
@@ -94,9 +161,16 @@
   will-change: width, transform;
 }
 
+/* 拖拽状态优化 */
+.app-content.resizing .terminal-section,
+.app-content.resizing .ai-section {
+  transition: none; /* 拖拽时禁用过渡动画 */
+}
+
 /* 无选择状态 */
 .resize-handle,
-.toggle-chat-btn {
+.toggle-chat-btn,
+.reset-layout-btn {
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
@@ -135,6 +209,21 @@
 
 .dark .ai-section {
   border-left: 1px solid var(--el-border-color-dark);
+}
+
+/* 清心主题适配 */
+.fresh .resize-handle:hover {
+  background: linear-gradient(135deg, rgba(66, 133, 244, 0.1) 0%, rgba(25, 118, 210, 0.1) 100%);
+}
+
+.fresh .ai-section {
+  border-left: 1px solid #d6e9ff;
+  background: linear-gradient(135deg, #f8fbff 0%, #e3f2fd 100%);
+}
+
+.fresh .terminal-section {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 50%, #ffffff 100%);
+  border-right: 1px solid #d6e9ff;
 }
 
 /* 动画类 */

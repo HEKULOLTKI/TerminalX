@@ -77,6 +77,12 @@ const initTerminal = () => {
   terminal.loadAddon(webLinksAddon)
   terminal.loadAddon(searchAddon)
 
+  // 确保DOM元素存在后再打开终端
+  if (!terminalElement.value) {
+    console.error('Terminal element not found')
+    return () => {} // 返回空函数避免错误
+  }
+  
   // 打开终端
   terminal.open(terminalElement.value)
   
@@ -109,12 +115,20 @@ const initTerminal = () => {
 
   // 窗口大小变化时重新适配
   const resizeObserver = new ResizeObserver(() => {
-    fitAddon.fit()
+    if (fitAddon) {
+      fitAddon.fit()
+    }
   })
-  resizeObserver.observe(terminalContainer.value)
+  
+  if (terminalContainer.value) {
+    resizeObserver.observe(terminalContainer.value)
+  }
 
+  // 返回清理函数
   return () => {
-    resizeObserver.disconnect()
+    if (resizeObserver) {
+      resizeObserver.disconnect()
+    }
   }
 }
 
@@ -279,23 +293,28 @@ watch(() => terminalStore.currentTheme, () => {
   }
 })
 
+let cleanup = null
+
 onMounted(async () => {
   await nextTick()
-  const cleanup = initTerminal()
-  
-  onUnmounted(() => {
+  cleanup = initTerminal()
+})
+
+onUnmounted(() => {
+  // 调用清理函数
+  if (cleanup) {
     cleanup()
-    
-    // 断开SSH连接
-    if (sshConnectionId) {
-      sshService.disconnect(sshConnectionId)
-    }
-    
-    // 销毁终端实例
-    if (terminal) {
-      terminal.dispose()
-    }
-  })
+  }
+  
+  // 断开SSH连接
+  if (sshConnectionId) {
+    sshService.disconnect(sshConnectionId)
+  }
+  
+  // 销毁终端实例
+  if (terminal) {
+    terminal.dispose()
+  }
 })
 
 // 导出终端实例供外部使用

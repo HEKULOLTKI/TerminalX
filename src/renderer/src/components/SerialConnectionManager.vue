@@ -1,5 +1,5 @@
 <template>
-  <div class="ssh-connection-manager">
+  <div class="serial-connection-manager">
     <!-- 工具栏 -->
     <div class="toolbar">
       <el-button 
@@ -7,14 +7,14 @@
         :icon="Plus" 
         @click="showNewConnection = true"
       >
-        新建SSH连接
+        新建串口连接
       </el-button>
       
       <div class="toolbar-actions">
         <el-button 
           :icon="Refresh"
-          @click="refreshConnections"
-          title="刷新连接状态"
+          @click="refreshSerialPorts"
+          title="刷新串口列表"
         />
         <el-dropdown trigger="click">
           <el-button :icon="MoreFilled">
@@ -38,20 +38,20 @@
 
     <!-- 连接列表 -->
     <div class="connection-list">
-      <div v-if="terminalStore.connections.length === 0" class="empty-state">
+      <div v-if="terminalStore.serialConnections.length === 0" class="empty-state">
         <el-empty 
-          description="暂无已保存的SSH连接" 
+          description="暂无已保存的串口连接" 
           :image-size="80"
         >
           <el-button type="primary" @click="showNewConnection = true">
-            创建第一个SSH连接
+            创建第一个串口连接
           </el-button>
         </el-empty>
       </div>
 
       <div v-else class="connections-grid">
         <div
-          v-for="connection in terminalStore.connections"
+          v-for="connection in terminalStore.serialConnections"
           :key="connection.id"
           class="connection-card"
         >
@@ -69,7 +69,7 @@
                     <el-icon><CopyDocument /></el-icon>
                     复制
                   </el-dropdown-item>
-                  <el-dropdown-item @click="connectToHost(connection)">
+                  <el-dropdown-item @click="connectToSerial(connection)">
                     <el-icon><Connection /></el-icon>
                     连接
                   </el-dropdown-item>
@@ -87,16 +87,16 @@
           
           <div class="connection-details">
             <div class="connection-info">
-              <el-icon class="info-icon"><User /></el-icon>
-              <span>{{ connection.username }}@{{ connection.host }}</span>
+              <el-icon class="info-icon"><Monitor /></el-icon>
+              <span>{{ connection.port }}</span>
             </div>
             <div class="connection-info">
-              <el-icon class="info-icon"><Link /></el-icon>
-              <span>端口: {{ connection.port }}</span>
+              <el-icon class="info-icon"><Timer /></el-icon>
+              <span>{{ connection.baudRate }} bps</span>
             </div>
             <div class="connection-info">
-              <el-icon class="info-icon"><Key /></el-icon>
-              <span>{{ connection.authType === 'password' ? '密码认证' : '私钥认证' }}</span>
+              <el-icon class="info-icon"><Setting /></el-icon>
+              <span>{{ connection.dataBits }}{{ connection.parity.charAt(0).toUpperCase() }}{{ connection.stopBits }}</span>
             </div>
           </div>
 
@@ -112,7 +112,7 @@
               type="primary" 
               size="small" 
               :icon="Connection"
-              @click="connectToHost(connection)"
+              @click="connectToSerial(connection)"
               :disabled="isConnectionActive(connection)"
             >
               {{ isConnectionActive(connection) ? '已连接' : '连接' }}
@@ -125,11 +125,11 @@
     <!-- 新建连接对话框 -->
     <el-dialog 
       v-model="showNewConnection" 
-      title="新建SSH连接" 
+      title="新建串口连接" 
       width="500px"
       :close-on-click-modal="false"
     >
-      <SSHConnection 
+      <SerialConnection 
         ref="newConnectionRef"
         @connected="handleConnectionSuccess"
         @cancelled="showNewConnection = false"
@@ -139,11 +139,11 @@
     <!-- 编辑连接对话框 -->
     <el-dialog 
       v-model="showEditConnection" 
-      title="编辑SSH连接" 
+      title="编辑串口连接" 
       width="500px"
       :close-on-click-modal="false"
     >
-      <SSHConnection 
+      <SerialConnection 
         ref="editConnectionRef"
         :connection="editingConnection"
         :editing="true"
@@ -166,13 +166,13 @@ import {
   CopyDocument,
   Delete,
   Connection,
-  User,
-  Link,
-  Key,
+  Monitor,
+  Timer,
+  Setting,
   Refresh
 } from '@element-plus/icons-vue'
 import { useTerminalStore } from '../stores/terminal'
-import SSHConnection from './SSHConnection.vue'
+import SerialConnection from './SerialConnection.vue'
 
 const terminalStore = useTerminalStore()
 
@@ -189,17 +189,16 @@ const editConnectionRef = ref(null)
 const isConnectionActive = (connection) => {
   return terminalStore.tabs.some(tab => 
     tab.connection && 
-    tab.connection.host === connection.host && 
+    tab.connection.type === 'serial' &&
     tab.connection.port === connection.port && 
-    tab.connection.username === connection.username &&
     tab.isConnected
   )
 }
 
-// 连接到主机
-const connectToHost = (connection) => {
-  terminalStore.createTab(connection)
-  ElMessage.success(`正在连接到 ${connection.host}...`)
+// 连接到串口
+const connectToSerial = (connection) => {
+  terminalStore.createSerialTab(connection)
+  ElMessage.success(`正在连接到串口 ${connection.port}...`)
 }
 
 // 编辑连接
@@ -213,10 +212,9 @@ const duplicateConnection = (connection) => {
   const newConnection = {
     ...connection,
     name: `${connection.name} - 副本`,
-    id: undefined // 让store生成新ID
+    id: undefined
   }
-  delete newConnection.id
-  terminalStore.addConnection(newConnection)
+  terminalStore.addSerialConnection(newConnection)
   ElMessage.success('连接已复制')
 }
 
@@ -229,14 +227,14 @@ const deleteConnection = async (connection) => {
       {
         confirmButtonText: '删除',
         cancelButtonText: '取消',
-        type: 'warning'
+        type: 'warning',
       }
     )
     
-    terminalStore.removeConnection(connection.id)
+    terminalStore.removeSerialConnection(connection.id)
     ElMessage.success('连接已删除')
   } catch {
-    // 用户取消
+    // 用户取消删除
   }
 }
 
@@ -244,45 +242,50 @@ const deleteConnection = async (connection) => {
 const handleConnectionSuccess = (data) => {
   showNewConnection.value = false
   showEditConnection.value = false
-  newConnectionRef.value?.resetForm()
-  editConnectionRef.value?.resetForm()
+  
+  // 可选：清理表单
+  if (newConnectionRef.value) {
+    newConnectionRef.value.resetForm()
+  }
+  if (editConnectionRef.value) {
+    editConnectionRef.value.resetForm()
+  }
 }
 
-// 导入连接
+// 刷新串口列表
+const refreshSerialPorts = () => {
+  ElMessage.info('正在刷新串口列表...')
+  // 这里可以添加刷新串口的逻辑
+}
+
+// 导入连接配置
 const importConnections = () => {
-  // TODO: 实现导入连接功能
   ElMessage.info('导入功能开发中...')
 }
 
-// 导出连接
+// 导出连接配置
 const exportConnections = () => {
-  if (terminalStore.connections.length === 0) {
-    ElMessage.warning('没有可导出的SSH连接')
+  if (terminalStore.serialConnections.length === 0) {
+    ElMessage.warning('没有可导出的串口连接')
     return
   }
   
-  const dataStr = JSON.stringify(terminalStore.connections, null, 2)
+  const dataStr = JSON.stringify(terminalStore.serialConnections, null, 2)
   const blob = new Blob([dataStr], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   
   const link = document.createElement('a')
   link.href = url
-  link.download = 'ssh-connections.json'
+  link.download = 'serial-connections.json'
   link.click()
   
   URL.revokeObjectURL(url)
-  ElMessage.success('SSH连接配置已导出')
-}
-
-// 刷新连接状态
-const refreshConnections = () => {
-  ElMessage.info('正在刷新连接状态...')
-  // 这里可以添加刷新连接状态的逻辑
+  ElMessage.success('串口连接配置已导出')
 }
 </script>
 
 <style scoped>
-.ssh-connection-manager {
+.serial-connection-manager {
   padding: 16px;
 }
 
@@ -424,24 +427,5 @@ const refreshConnections = () => {
   background: #e3f2fd;
   border-color: #d6e9ff;
   color: #90a4ae;
-}
-
-/* 滚动条样式 */
-.connection-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.connection-list::-webkit-scrollbar-track {
-  background: var(--el-fill-color-light);
-  border-radius: 3px;
-}
-
-.connection-list::-webkit-scrollbar-thumb {
-  background: var(--el-border-color);
-  border-radius: 3px;
-}
-
-.connection-list::-webkit-scrollbar-thumb:hover {
-  background: var(--el-border-color-darker);
 }
 </style> 

@@ -3,8 +3,11 @@
     <!-- 头部 -->
     <div class="sidebar-header">
       <div class="logo">
-        <el-icon class="logo-icon"><Monitor /></el-icon>
-        <span class="logo-text">TerminalX</span>
+        <el-icon class="logo-icon">
+          <Monitor v-if="props.mode === 'terminal'" />
+          <Setting v-else />
+        </el-icon>
+        <span class="logo-text">{{ props.mode === 'terminal' ? '终端管理' : '应用配置' }}</span>
       </div>
       
       <!-- 主题切换 -->
@@ -18,143 +21,90 @@
       </el-tooltip>
     </div>
 
-    <!-- 快速操作 -->
-    <div class="quick-actions">
-      <el-button 
-        type="primary" 
-        :icon="Plus" 
-        @click="createNewTab"
-        style="width: 100%"
-      >
-        新建终端
-      </el-button>
-    </div>
-
-    <!-- 标签页列表 -->
-    <div class="tabs-section">
-      <div class="section-header">
-        <span class="section-title">标签页</span>
-        <span class="connection-count">{{ terminalStore.tabs.length }}</span>
-      </div>
-
-      <div class="tabs-list">
-        <div
-          v-for="tab in terminalStore.tabs"
-          :key="tab.id"
-          :class="['tab-item', { current: tab.id === terminalStore.activeTabId }]"
-          @click="terminalStore.switchTab(tab.id)"
+    <!-- 终端模式内容 -->
+    <template v-if="props.mode === 'terminal'">
+      <!-- 快速操作 -->
+      <div class="quick-actions">
+        <el-button 
+          type="primary" 
+          :icon="Plus" 
+          @click="createNewTab"
+          style="width: 100%"
         >
-          <div class="tab-info">
-            <div class="tab-name">{{ tab.title }}</div>
-            <div class="tab-status" v-if="tab.connection">
-              <span :class="['status-dot', { connected: tab.isConnected }]"></span>
-              {{ tab.isConnected ? '已连接' : '未连接' }}
-            </div>
-            <div class="tab-status" v-else>
-              <span class="status-dot local"></span>
-              本地终端
-            </div>
-          </div>
-          <el-button 
-            size="small" 
-            :icon="Close" 
-            text 
-            @click.stop="terminalStore.closeTab(tab.id)"
-            v-show="terminalStore.tabs.length > 1"
-          />
+          新建终端
+        </el-button>
+      </div>
+
+      <!-- 标签页列表 -->
+      <div class="tabs-section">
+        <div class="section-header">
+          <span class="section-title">标签页</span>
+          <span class="connection-count">{{ terminalStore.tabs.length }}</span>
         </div>
 
-        <div v-if="terminalStore.tabs.length === 0" class="no-tabs">
-          <el-empty 
-            description="暂无标签页" 
-            :image-size="60"
+        <div class="tabs-list">
+          <div
+            v-for="tab in terminalStore.tabs"
+            :key="tab.id"
+            :class="['tab-item', { current: tab.id === terminalStore.activeTabId }]"
+            @click="terminalStore.switchTab(tab.id)"
           >
-            <el-button type="primary" @click="createNewTab">
-              创建第一个标签页
-            </el-button>
-          </el-empty>
+            <div class="tab-info">
+              <div class="tab-name">{{ tab.title }}</div>
+              <div class="tab-status" v-if="tab.connection">
+                <span :class="['status-dot', { connected: tab.isConnected }]"></span>
+                {{ tab.isConnected ? '已连接' : '未连接' }}
+              </div>
+              <div class="tab-status" v-else>
+                <span class="status-dot local"></span>
+                本地终端
+              </div>
+            </div>
+            <el-button 
+              size="small" 
+              :icon="Close" 
+              text 
+              @click.stop="terminalStore.closeTab(tab.id)"
+              v-show="terminalStore.tabs.length > 1"
+            />
+          </div>
+
+          <div v-if="terminalStore.tabs.length === 0" class="no-tabs">
+            <el-empty 
+              description="暂无标签页" 
+              :image-size="60"
+            >
+              <el-button type="primary" @click="createNewTab">
+                创建第一个标签页
+              </el-button>
+            </el-empty>
+          </div>
         </div>
       </div>
-    </div>
+    </template>
 
-    <!-- 底部工具 -->
-    <div class="sidebar-footer">
-      <el-button 
-        :icon="Setting" 
-        text 
-        @click="showSettings = true"
-        title="设置"
-      />
-      <el-button 
-        :icon="QuestionFilled" 
-        text 
-        @click="showHelp = true"
-        title="帮助"
-      />
-      <el-button 
-        :icon="InfoFilled" 
-        text 
-        @click="showAbout = true"
-        title="关于"
-      />
-    </div>
-
-    <!-- 设置对话框 -->
-    <el-dialog v-model="showSettings" title="设置" width="800px">
-      <div class="settings-content">
-        <el-tabs v-model="activeSettingsTab" type="border-card">
-          <!-- 常规设置 -->
-          <el-tab-pane label="常规" name="general">
-            <el-form label-width="120px">
-              <el-form-item label="默认主题">
-                <el-radio-group v-model="terminalStore.currentTheme" @change="terminalStore.setTheme">
-                  <el-radio label="dark">深色主题</el-radio>
-                  <el-radio label="light">浅色主题</el-radio>
-                </el-radio-group>
-              </el-form-item>
-            </el-form>
-          </el-tab-pane>
+    <!-- 配置模式内容 -->
+    <template v-else>
+      <div class="config-content">
+        <div class="config-section">
+          <h3>连接管理</h3>
           
-          <!-- SSH连接管理 -->
-          <el-tab-pane label="SSH连接" name="ssh">
-            <SSHConnectionManager />
-          </el-tab-pane>
-        </el-tabs>
-      </div>
-    </el-dialog>
-
-    <!-- 帮助对话框 -->
-    <el-dialog v-model="showHelp" title="帮助" width="600px">
-      <div class="help-content">
-        <h3>快捷键</h3>
-        <ul>
-          <li><code>Ctrl + T</code> - 新建标签页</li>
-          <li><code>Ctrl + W</code> - 关闭当前标签页</li>
-          <li><code>Ctrl + Tab</code> - 切换到下一个标签页</li>
-          <li><code>Ctrl + Shift + Tab</code> - 切换到上一个标签页</li>
-          <li><code>Ctrl + 1-9</code> - 切换到指定标签页</li>
-        </ul>
-        
-        <h3>支持的协议</h3>
-        <ul>
-          <li>SSH - 安全外壳协议</li>
-          <li>本地终端 - 模拟终端环境</li>
-        </ul>
-      </div>
-    </el-dialog>
-
-    <!-- 关于对话框 -->
-    <el-dialog v-model="showAbout" title="关于 TerminalX" width="400px">
-      <div class="about-content">
-        <div class="about-logo">
-          <el-icon class="about-icon"><Monitor /></el-icon>
-          <h2>TerminalX</h2>
-          <p>v1.0.0</p>
+          <!-- 连接类型选择 -->
+          <div class="connection-type-tabs">
+            <el-tabs v-model="activeConnectionType" type="border-card">
+              <el-tab-pane label="SSH连接" name="ssh">
+                <SSHConnectionManager />
+              </el-tab-pane>
+              <el-tab-pane label="串口连接" name="serial">
+                <SerialConnectionManager />
+              </el-tab-pane>
+            </el-tabs>
+          </div>
         </div>
-        <p>基于 Electron + Vue 的现代化终端模拟器</p>
-        <p>支持 SSH 连接、多标签页管理、主题切换等功能</p>
       </div>
-    </el-dialog>
+    </template>
+
+
   </div>
 </template>
 
@@ -166,27 +116,37 @@ import {
   Plus,
   Close,
   Setting,
-  QuestionFilled,
-  InfoFilled,
   Sunny,
   Moon
 } from '@element-plus/icons-vue'
 import { useTerminalStore } from '../stores/terminal'
 import SSHConnectionManager from './SSHConnectionManager.vue'
+import SerialConnectionManager from './SerialConnectionManager.vue'
+
+// 接收props
+const props = defineProps({
+  mode: {
+    type: String,
+    default: 'terminal',
+    validator: (value) => ['terminal', 'config'].includes(value)
+  }
+})
 
 const terminalStore = useTerminalStore()
 
-// 对话框状态
-const showSettings = ref(false)
-const showHelp = ref(false)
-const showAbout = ref(false)
-const activeSettingsTab = ref('general')
+// 连接类型选择
+const activeConnectionType = ref('ssh')
 
 // 切换主题
 const toggleTheme = () => {
-  const newTheme = terminalStore.currentTheme === 'dark' ? 'light' : 'dark'
+  const newTheme = terminalStore.currentTheme === 'dark' ? 'fresh' : 'dark'
   terminalStore.setTheme(newTheme)
-  ElMessage.success(`已切换到${newTheme === 'dark' ? '深色' : '浅色'}主题`)
+  
+  const themeNames = {
+    fresh: '清心',
+    dark: '深色'
+  }
+  ElMessage.success(`已切换到${themeNames[newTheme]}主题`)
 }
 
 // 创建新标签页
@@ -207,12 +167,26 @@ const createNewTab = () => {
   overflow: hidden;
 }
 
+/* 清心主题下的侧边栏样式 */
+.fresh-theme .sidebar {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-right: 1px solid #d6e9ff;
+  box-shadow: 2px 0 10px rgba(66, 133, 244, 0.08);
+}
+
 .sidebar-header {
   padding: 16px;
   border-bottom: 1px solid var(--el-border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+/* 清心主题下的侧边栏头部 */
+.fresh-theme .sidebar-header {
+  background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
+  border-bottom: 1px solid #e3f2fd;
+  box-shadow: 0 2px 4px rgba(66, 133, 244, 0.05);
 }
 
 .logo {
@@ -232,9 +206,42 @@ const createNewTab = () => {
   color: var(--el-text-color-primary);
 }
 
-.theme-toggle {
-  border: none;
-  background: transparent;
+/* 清心主题下的Logo样式 */
+.fresh-theme .logo-icon {
+  color: #4285f4;
+  text-shadow: 0 0 10px rgba(66, 133, 244, 0.3);
+}
+
+.fresh-theme .logo-text {
+  color: #1565c0;
+  font-weight: 600;
+}
+
+/* 清心主题下的按钮样式 */
+.fresh-theme .el-button--primary {
+  background: linear-gradient(135deg, #4285f4 0%, #1976d2 100%);
+  border-color: #4285f4;
+  box-shadow: 0 4px 12px rgba(66, 133, 244, 0.3);
+}
+
+.fresh-theme .el-button--primary:hover {
+  background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+  border-color: #1976d2;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(66, 133, 244, 0.4);
+}
+
+.fresh-theme .theme-toggle {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid #d6e9ff;
+  color: #4285f4;
+  backdrop-filter: blur(10px);
+}
+
+.fresh-theme .theme-toggle:hover {
+  background: rgba(240, 247, 255, 0.9);
+  border-color: #4285f4;
+  color: #1565c0;
 }
 
 .quick-actions {
@@ -242,11 +249,38 @@ const createNewTab = () => {
   border-bottom: 1px solid var(--el-border-color);
 }
 
+/* 清心主题下的快速操作区域 */
+.fresh-theme .quick-actions {
+  background: rgba(248, 251, 255, 0.8);
+  backdrop-filter: blur(5px);
+}
+
 .tabs-section {
   flex: 1;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* 清心主题下的标签页区域 */
+.fresh-theme .tabs-section {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.fresh-theme .section-header {
+  background: rgba(240, 247, 255, 0.8);
+  border-bottom: 1px solid #e3f2fd;
+}
+
+.fresh-theme .section-title {
+  color: #1565c0;
+  font-weight: 600;
+}
+
+.fresh-theme .connection-count {
+  background: linear-gradient(135deg, #4285f4 0%, #1976d2 100%);
+  color: white;
+  box-shadow: 0 2px 6px rgba(66, 133, 244, 0.3);
 }
 
 .section-header {
@@ -338,66 +372,129 @@ const createNewTab = () => {
   background-color: var(--el-color-primary);
 }
 
+.theme-toggle {
+  border: none;
+  background: transparent;
+}
+
+/* 清心主题下的标签页项目 */
+.fresh-theme .tab-item {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid #e3f2fd;
+  backdrop-filter: blur(5px);
+}
+
+.fresh-theme .tab-item:hover {
+  background: rgba(240, 247, 255, 0.9);
+  border-color: #b3d9ff;
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(66, 133, 244, 0.15);
+}
+
+.fresh-theme .tab-item.current {
+  background: linear-gradient(135deg, #e3f2fd 0%, #f0f7ff 100%);
+  border-color: #4285f4;
+  color: #1565c0;
+  box-shadow: 0 4px 12px rgba(66, 133, 244, 0.2);
+}
+
+.fresh-theme .tab-name {
+  color: inherit;
+  font-weight: 500;
+}
+
+.fresh-theme .status-dot.connected {
+  background: #2ecc71;
+  box-shadow: 0 0 6px rgba(46, 204, 113, 0.5);
+}
+
+.fresh-theme .status-dot.local {
+  background: #4285f4;
+  box-shadow: 0 0 6px rgba(66, 133, 244, 0.5);
+}
+
 .no-tabs {
   padding: 20px;
   text-align: center;
 }
 
-.sidebar-footer {
+/* 配置内容样式 */
+.config-content {
+  flex: 1;
   padding: 16px;
-  border-top: 1px solid var(--el-border-color);
-  display: flex;
-  justify-content: space-around;
+  overflow-y: auto;
 }
 
-.settings-content {
-  min-height: 400px;
-}
-
-.help-content h3 {
-  margin-bottom: 16px;
-  color: var(--el-text-color-primary);
-}
-
-.help-content ul {
-  margin-bottom: 24px;
-  padding-left: 20px;
-}
-
-.help-content li {
-  margin-bottom: 8px;
-  color: var(--el-text-color-regular);
-}
-
-.help-content code {
-  background-color: var(--el-fill-color-light);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 12px;
-}
-
-.about-content {
-  text-align: center;
-}
-
-.about-logo {
+.config-section {
   margin-bottom: 24px;
 }
 
-.about-icon {
-  font-size: 48px;
-  color: var(--el-color-primary);
+.config-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--el-border-color);
+}
+
+.config-item {
   margin-bottom: 16px;
 }
 
-.about-content h2 {
-  margin-bottom: 8px;
-  color: var(--el-text-color-primary);
-}
-
-.about-content p {
+.config-item label {
+  display: block;
+  font-size: 13px;
   color: var(--el-text-color-regular);
   margin-bottom: 8px;
+}
+
+/* 清心主题下的配置样式 */
+.fresh-theme .config-section h3 {
+  color: #1565c0;
+  border-bottom-color: #d6e9ff;
+}
+
+.fresh-theme .config-item label {
+  color: #2c3e50;
+}
+
+
+
+/* 连接类型选择标签页样式 */
+.connection-type-tabs {
+  margin-top: 16px;
+}
+
+.connection-type-tabs :deep(.el-tabs) {
+  background: transparent;
+}
+
+.connection-type-tabs :deep(.el-tabs__header) {
+  margin: 0 0 16px 0;
+}
+
+.connection-type-tabs :deep(.el-tabs__item) {
+  padding: 0 20px;
+  height: 36px;
+  line-height: 36px;
+  font-size: 14px;
+}
+
+.connection-type-tabs :deep(.el-tabs__content) {
+  padding: 0;
+}
+
+/* 清心主题适配 */
+.fresh .connection-type-tabs :deep(.el-tabs__item) {
+  color: #5f6368;
+}
+
+.fresh .connection-type-tabs :deep(.el-tabs__item.is-active) {
+  color: #1565c0;
+}
+
+.fresh .connection-type-tabs :deep(.el-tabs__active-bar) {
+  background-color: #4285f4;
 }
 </style> 

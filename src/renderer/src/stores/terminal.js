@@ -12,8 +12,15 @@ export const useTerminalStore = defineStore('terminal', () => {
   // SSH连接配置
   const connections = ref([])
   
+  // 串口连接配置
+  const serialConnections = ref([])
+  
   // 当前主题
-  const currentTheme = ref('dark')
+  const currentTheme = ref('fresh')
+  
+  // 侧边栏显示状态
+  const showSidebar = ref(false)
+  const sidebarMode = ref('terminal') // 'terminal' 或 'config'
   
   // 主题配置
   const themes = reactive({
@@ -39,27 +46,28 @@ export const useTerminalStore = defineStore('terminal', () => {
       brightCyan: '#29b8db',
       brightWhite: '#ffffff'
     },
-    light: {
-      background: '#ffffff',
-      foreground: '#000000',
-      cursor: '#000000',
-      selection: '#c1dbfc',
+    fresh: {
+      // 终端区域保持黑色，但界面使用蓝白配色
+      background: '#1e1e1e',  // 终端背景保持黑色
+      foreground: '#ffffff',
+      cursor: '#ffffff',
+      selection: '#264f78',
       black: '#000000',
-      red: '#cd3131',
-      green: '#00bc00',
-      yellow: '#949800',
-      blue: '#0451a5',
-      magenta: '#bc05bc',
-      cyan: '#0598bc',
-      white: '#555555',
-      brightBlack: '#666666',
-      brightRed: '#cd3131',
-      brightGreen: '#14ce14',
-      brightYellow: '#b5ba00',
-      brightBlue: '#0451a5',
-      brightMagenta: '#bc05bc',
-      brightCyan: '#0598bc',
-      brightWhite: '#a5a5a5'
+      red: '#e74c3c',
+      green: '#27ae60',
+      yellow: '#f39c12',
+      blue: '#3498db',
+      magenta: '#9b59b6',
+      cyan: '#1abc9c',
+      white: '#ecf0f1',
+      brightBlack: '#7f8c8d',
+      brightRed: '#e74c3c',
+      brightGreen: '#2ecc71',
+      brightYellow: '#f1c40f',
+      brightBlue: '#3498db',
+      brightMagenta: '#8e44ad',
+      brightCyan: '#16a085',
+      brightWhite: '#ffffff'
     }
   })
 
@@ -129,6 +137,45 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
   }
 
+  // 创建串口标签页
+  const createSerialTab = (connection) => {
+    const id = uuidv4()
+    const tab = {
+      id,
+      title: connection ? `${connection.name} (${connection.port})` : '串口终端',
+      connection: {
+        ...connection,
+        type: 'serial'
+      },
+      isConnected: false,
+      terminal: null,
+      serial: null
+    }
+    tabs.value.push(tab)
+    activeTabId.value = id
+    return tab
+  }
+
+  // 添加串口连接配置
+  const addSerialConnection = (config) => {
+    const connection = {
+      id: uuidv4(),
+      ...config,
+      type: 'serial',
+      createdAt: new Date()
+    }
+    serialConnections.value.push(connection)
+    return connection
+  }
+
+  // 删除串口连接配置
+  const removeSerialConnection = (connectionId) => {
+    const index = serialConnections.value.findIndex(conn => conn.id === connectionId)
+    if (index !== -1) {
+      serialConnections.value.splice(index, 1)
+    }
+  }
+
   // 切换主题
   const setTheme = (theme) => {
     currentTheme.value = theme
@@ -144,19 +191,44 @@ export const useTerminalStore = defineStore('terminal', () => {
     return themes[currentTheme.value]
   }
 
+  // 侧边栏控制方法
+  const toggleSidebar = () => {
+    showSidebar.value = !showSidebar.value
+  }
+
+  const setSidebarMode = (mode) => {
+    sidebarMode.value = mode
+    if (!showSidebar.value) {
+      showSidebar.value = true
+    }
+  }
+
+  const hideSidebar = () => {
+    showSidebar.value = false
+  }
+
   return {
     activeTabId,
     tabs,
     connections,
+    serialConnections,
     currentTheme,
     themes,
+    showSidebar,
+    sidebarMode,
     createTab,
+    createSerialTab,
     closeTab,
     switchTab,
     addConnection,
     removeConnection,
+    addSerialConnection,
+    removeSerialConnection,
     setTheme,
     getActiveTab,
-    getCurrentTheme
+    getCurrentTheme,
+    toggleSidebar,
+    setSidebarMode,
+    hideSidebar
   }
 }) 

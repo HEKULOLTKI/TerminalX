@@ -556,4 +556,91 @@ const exportChat = () => {
 .chat-messages::-webkit-scrollbar-thumb:hover {
   background: var(--el-border-color-dark);
 }
+
+/* 清心主题样式 */
+.fresh .ai-chat {
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.fresh .chat-header {
+  background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
+  border-bottom: 1px solid #d6e9ff;
+  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.06);
+}
+
+.fresh .chat-title {
+  color: #1565c0;
+  font-weight: 600;
+}
+
+.fresh .status-dot.online {
+  background: #2ecc71;
+  box-shadow: 0 0 8px rgba(46, 204, 113, 0.5);
+}
+
+.fresh .message-text {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #e3f2fd;
+  color: #2c3e50;
+  backdrop-filter: blur(5px);
+}
+
+.fresh .user-message .message-text {
+  background: linear-gradient(135deg, #4285f4 0%, #1976d2 100%);
+  color: white;
+  border-color: #4285f4;
+  box-shadow: 0 4px 12px rgba(66, 133, 244, 0.3);
+}
+
+.fresh .message-text :deep(code) {
+  background: rgba(66, 133, 244, 0.1);
+  color: #1565c0;
+}
+
+.fresh .message-text :deep(pre) {
+  background: rgba(66, 133, 244, 0.05);
+  border: 1px solid #e3f2fd;
+}
+
+.fresh .chat-input {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+  border-top: 1px solid #d6e9ff;
+}
+
+.fresh .message-textarea {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #d6e9ff;
+  color: #2c3e50;
+  backdrop-filter: blur(5px);
+}
+
+.fresh .message-textarea:focus {
+  border-color: #4285f4;
+  box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.1);
+}
+
+.fresh .send-button {
+  background: linear-gradient(135deg, #4285f4 0%, #1976d2 100%);
+  box-shadow: 0 4px 12px rgba(66, 133, 244, 0.3);
+}
+
+.fresh .send-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(66, 133, 244, 0.4);
+}
+
+.fresh .quick-action {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid #e3f2fd;
+  color: #4285f4;
+  backdrop-filter: blur(5px);
+}
+
+.fresh .quick-action:hover {
+  background: rgba(240, 247, 255, 0.9);
+  border-color: #4285f4;
+  color: #1565c0;
+  transform: translateY(-1px);
+}
 </style> 

@@ -12,8 +12,31 @@
         <span class="app-title">TerminalX</span>
       </div>
       
-      <!-- 中间空白区域（可拖拽） -->
-      <div class="title-bar-center"></div>
+      <!-- 中间标题区域 -->
+      <div class="title-bar-center">
+        <!-- 终端标题部分 -->
+        <div class="title-section terminal-title">
+          <div class="title-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17l-4-4 4-4v2h6v4H9v2z"/>
+            </svg>
+          </div>
+          <span class="title-text">{{ terminalTitle }}</span>
+        </div>
+        
+        <!-- 分隔线 -->
+        <div class="title-separator"></div>
+        
+        <!-- AI助手标题部分 -->
+        <div class="title-section ai-title">
+          <div class="title-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+            </svg>
+          </div>
+          <span class="title-text">{{ aiTitle }}</span>
+        </div>
+      </div>
       
       <!-- 右侧窗口控制按钮 -->
       <div class="title-bar-controls">
@@ -56,9 +79,25 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { useTerminalStore } from '../stores/terminal'
 
+const terminalStore = useTerminalStore()
 const isMaximized = ref(false)
+
+// 计算终端标题
+const terminalTitle = computed(() => {
+  const activeTab = terminalStore.getActiveTab()
+  if (activeTab) {
+    return activeTab.title
+  }
+  return '终端'
+})
+
+// AI助手标题
+const aiTitle = computed(() => {
+  return 'AI助手'
+})
 
 // 窗口控制方法
 const minimizeWindow = () => {
@@ -103,8 +142,11 @@ onUnmounted(() => {
   background: var(--el-bg-color-page);
   border-bottom: 1px solid var(--el-border-color);
   user-select: none;
-  position: relative;
-  z-index: 9999;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10000;
 }
 
 .title-bar-drag-region {
@@ -139,7 +181,52 @@ onUnmounted(() => {
 }
 
 .title-bar-center {
+  display: flex;
+  align-items: center;
   flex: 1;
+  padding: 0 16px;
+  gap: 12px;
+}
+
+.title-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.title-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.terminal-title .title-icon {
+  color: var(--el-color-primary);
+}
+
+.ai-title .title-icon {
+  color: var(--el-color-success);
+}
+
+.title-text {
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.title-separator {
+  width: 1px;
+  height: 18px;
+  background: var(--el-border-color);
+  flex-shrink: 0;
 }
 
 .title-bar-controls {
@@ -160,6 +247,9 @@ onUnmounted(() => {
   cursor: pointer;
   transition: all 0.2s;
   font-size: 12px;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
 }
 
 .control-btn:hover {
@@ -190,19 +280,14 @@ onUnmounted(() => {
   .control-btn {
     width: 40px;
   }
-}
-
-/* 深色主题适配 */
-.dark .title-bar {
-  background: #2d2d30;
-  border-bottom-color: #3c3c3c;
-}
-
-.dark .control-btn:hover {
-  background: #3e3e42;
-}
-
-.dark .control-btn:active {
-  background: #4a4a4f;
+  
+  .title-bar-center {
+    padding: 0 8px;
+    gap: 8px;
+  }
+  
+  .title-text {
+    font-size: 11px;
+  }
 }
 </style> 

@@ -55,7 +55,6 @@
         <el-button type="primary" @click="handleConnect" :loading="connecting">
           {{ editing ? '更新并连接' : '连接' }}
         </el-button>
-        <el-button @click="handleSave" v-if="!editing">保存配置</el-button>
         <el-button @click="handleCancel">取消</el-button>
       </el-form-item>
     </el-form>
@@ -79,7 +78,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['connected', 'saved', 'cancelled'])
+const emit = defineEmits(['connected', 'cancelled'])
 
 const terminalStore = useTerminalStore()
 const formRef = ref(null)
@@ -156,11 +155,26 @@ const handleConnect = async () => {
     // 测试SSH连接
     await sshService.testConnection(connectionForm)
     
-    // 创建新标签页
-    const tab = terminalStore.createTab(connectionForm)
+    // 自动保存配置（如果不是编辑模式）
+    let savedConnection = connectionForm
+    if (!props.editing) {
+      savedConnection = terminalStore.addConnection(connectionForm)
+      ElMessage.success('配置已保存并开始连接...')
+    } else {
+      // 编辑模式下更新现有连接
+      if (props.connection && props.connection.id) {
+        const index = terminalStore.connections.findIndex(conn => conn.id === props.connection.id)
+        if (index !== -1) {
+          Object.assign(terminalStore.connections[index], connectionForm)
+        }
+      }
+      ElMessage.success('配置已更新并开始连接...')
+    }
     
-    ElMessage.success('SSH连接测试成功!')
-    emit('connected', { tab, connection: connectionForm })
+    // 创建新标签页
+    const tab = terminalStore.createTab(savedConnection)
+    
+    emit('connected', { tab, connection: savedConnection })
     
   } catch (error) {
     ElMessage.error(`连接失败: ${error.message}`)
@@ -170,21 +184,6 @@ const handleConnect = async () => {
 }
 
 
-
-// 保存配置
-const handleSave = async () => {
-  try {
-    const valid = await formRef.value.validate()
-    if (!valid) return
-
-    const connection = terminalStore.addConnection(connectionForm)
-    ElMessage.success('连接配置已保存!')
-    emit('saved', connection)
-    
-  } catch (error) {
-    ElMessage.error('保存失败')
-  }
-}
 
 // 取消操作
 const handleCancel = () => {
