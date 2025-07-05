@@ -61,20 +61,80 @@
       
       <!-- 右侧AI聊天区域 -->
       <div class="ai-section" :class="{ 'collapsed': isChatCollapsed }" :style="{ width: aiWidth }">
-        <!-- AI聊天区域头部控制按钮 -->
-        <div class="ai-header">
-          <button @click="toggleChat" class="toggle-chat-btn">
-            <span v-if="isChatCollapsed">展开AI助手</span>
-            <span v-else>收起AI助手</span>
-            <i :class="isChatCollapsed ? 'icon-expand' : 'icon-collapse'">
-              {{ isChatCollapsed ? '◀' : '▶' }}
-            </i>
-          </button>
+        <!-- AI聊天顶部控制栏 -->
+        <div class="ai-header" v-show="!isChatCollapsed">
+          <div class="ai-header-left">
+            <div class="chat-title" :title="currentChatTitle">
+              {{ currentChatTitle || '新对话' }}
+            </div>
+          </div>
+          <div class="ai-header-right">
+            <button 
+              class="ai-header-btn" 
+              @click="createNewChat"
+              title="新建聊天"
+            >
+              <el-icon><Plus /></el-icon>
+            </button>
+            <button 
+              class="ai-header-btn" 
+              @click="showChatHistory = !showChatHistory"
+              title="历史记录"
+              :class="{ active: showChatHistory }"
+            >
+              <el-icon><Clock /></el-icon>
+            </button>
+            <button 
+              class="ai-header-btn close-btn" 
+              @click="toggleChat"
+              title="关闭聊天区域"
+            >
+              <el-icon><Close /></el-icon>
+            </button>
+          </div>
+        </div>
+        
+        <!-- 历史记录面板 -->
+        <div class="chat-history-panel" v-show="!isChatCollapsed && showChatHistory">
+          <div class="history-header">
+            <span class="history-title">聊天历史</span>
+            <button class="clear-history-btn" @click="clearAllHistory" title="清空历史">
+              <el-icon><Delete /></el-icon>
+            </button>
+          </div>
+          <div class="history-list">
+            <div 
+              v-for="chat in chatHistory" 
+              :key="chat.id"
+              class="history-item"
+              :class="{ active: chat.id === currentChatId }"
+              @click="switchToChat(chat.id)"
+            >
+              <div class="history-title">{{ chat.title }}</div>
+              <div class="history-time">{{ formatHistoryTime(chat.createdAt) }}</div>
+              <button 
+                class="delete-chat-btn" 
+                @click.stop="deleteChat(chat.id)"
+                title="删除此对话"
+              >
+                <el-icon><Delete /></el-icon>
+              </button>
+            </div>
+          </div>
+          <div v-if="chatHistory.length === 0" class="empty-history">
+            <div class="empty-icon">💬</div>
+            <div class="empty-text">暂无聊天历史</div>
+          </div>
         </div>
         
         <!-- AI聊天组件 -->
         <div class="ai-content" v-show="!isChatCollapsed">
-          <AIChat />
+          <AIChat 
+            ref="aiChatRef"
+            :chat-id="currentChatId"
+            @chat-title-generated="onChatTitleGenerated"
+            @messages-updated="onMessagesUpdated"
+          />
         </div>
       </div>
     </div>
@@ -88,12 +148,20 @@ import TitleBar from './components/TitleBar.vue'
 import Sidebar from './components/Sidebar.vue'
 import TabManager from './components/TabManager.vue'
 import AIChat from './components/AIChat.vue'
-import { Monitor, Setting } from '@element-plus/icons-vue'
+import { Monitor, Setting, Plus, Clock, Close, Delete } from '@element-plus/icons-vue'
 import './assets/layout.css'
 
 const terminalStore = useTerminalStore()
 const isChatCollapsed = ref(false)
 const isResizing = ref(false)
+
+// AI聊天相关状态
+const aiChatRef = ref(null)
+const showChatHistory = ref(false)
+const currentChatId = ref(1)
+const currentChatTitle = ref('')
+const chatHistory = ref([])
+let chatIdCounter = 1
 
 // 布局尺寸
 const layout = reactive({
@@ -146,6 +214,9 @@ onMounted(() => {
     isChatCollapsed.value = JSON.parse(savedChatState)
   }
 
+  // 加载聊天历史记录
+  loadChatHistoryFromStorage()
+
   // 添加键盘快捷键支持
   const handleKeyDown = (e) => {
     // Ctrl+1 切换到终端模式
@@ -197,6 +268,142 @@ const switchToTerminal = (event) => {
 const switchToConfig = (event) => {
   addRippleEffect(event.currentTarget)
   terminalStore.setSidebarMode('config')
+}
+
+// AI聊天管理方法
+const createNewChat = () => {
+  chatIdCounter++
+  currentChatId.value = chatIdCounter
+  currentChatTitle.value = ''
+  showChatHistory.value = false
+  
+  // 保存当前聊天到历史记录（如果有内容）
+  if (aiChatRef.value && aiChatRef.value.hasMessages()) {
+    saveChatToHistory()
+  }
+  
+  // 清空当前聊天
+  if (aiChatRef.value) {
+    aiChatRef.value.clearChat()
+  }
+}
+
+const onChatTitleGenerated = (title) => {
+  currentChatTitle.value = title
+  // 更新历史记录中对应聊天的标题
+  const existingChat = chatHistory.value.find(chat => chat.id === currentChatId.value)
+  if (existingChat) {
+    existingChat.title = title
+    saveChatHistoryToStorage()
+  }
+}
+
+const onMessagesUpdated = (messages) => {
+  // 如果是第一条用户消息，自动保存到历史记录
+  if (messages.length === 2 && messages[1].type === 'user') {
+    saveChatToHistory()
+  }
+}
+
+const saveChatToHistory = () => {
+  const existingChatIndex = chatHistory.value.findIndex(chat => chat.id === currentChatId.value)
+  const chatData = {
+    id: currentChatId.value,
+    title: currentChatTitle.value || '新对话',
+    createdAt: new Date(),
+    updatedAt: new Date()
+  }
+  
+  if (existingChatIndex >= 0) {
+    chatHistory.value[existingChatIndex] = { ...chatHistory.value[existingChatIndex], ...chatData }
+  } else {
+    chatHistory.value.unshift(chatData)
+  }
+  
+  saveChatHistoryToStorage()
+}
+
+const switchToChat = async (chatId) => {
+  if (currentChatId.value !== chatId) {
+    currentChatId.value = chatId
+    const chat = chatHistory.value.find(c => c.id === chatId)
+    if (chat) {
+      currentChatTitle.value = chat.title
+    }
+    showChatHistory.value = false
+    
+    // 通知AIChat组件切换聊天
+    if (aiChatRef.value) {
+      await aiChatRef.value.loadChat(chatId)
+    }
+  }
+}
+
+const deleteChat = (chatId) => {
+  const index = chatHistory.value.findIndex(chat => chat.id === chatId)
+  if (index >= 0) {
+    chatHistory.value.splice(index, 1)
+    saveChatHistoryToStorage()
+    
+    // 如果删除的是当前聊天，创建新聊天
+    if (chatId === currentChatId.value) {
+      createNewChat()
+    }
+    
+    // 删除存储的聊天消息
+    localStorage.removeItem(`terminalx-chat-${chatId}`)
+  }
+}
+
+const clearAllHistory = () => {
+  chatHistory.value.forEach(chat => {
+    localStorage.removeItem(`terminalx-chat-${chat.id}`)
+  })
+  chatHistory.value = []
+  saveChatHistoryToStorage()
+  createNewChat()
+}
+
+const formatHistoryTime = (date) => {
+  const now = new Date()
+  const diffTime = now - new Date(date)
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+  
+  if (diffDays === 0) {
+    return new Date(date).toLocaleTimeString('zh-CN', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    })
+  } else if (diffDays === 1) {
+    return '昨天'
+  } else if (diffDays < 7) {
+    return `${diffDays}天前`
+  } else {
+    return new Date(date).toLocaleDateString('zh-CN', { 
+      month: 'short', 
+      day: 'numeric' 
+    })
+  }
+}
+
+const saveChatHistoryToStorage = () => {
+  localStorage.setItem('terminalx-chat-history', JSON.stringify(chatHistory.value))
+}
+
+const loadChatHistoryFromStorage = () => {
+  const saved = localStorage.getItem('terminalx-chat-history')
+  if (saved) {
+    try {
+      chatHistory.value = JSON.parse(saved)
+      // 转换日期字符串为Date对象
+      chatHistory.value.forEach(chat => {
+        chat.createdAt = new Date(chat.createdAt)
+        chat.updatedAt = new Date(chat.updatedAt)
+      })
+    } catch (e) {
+      console.warn('Failed to parse chat history:', e)
+    }
+  }
 }
 
 
@@ -842,10 +1049,202 @@ html, body, #app {
 
 /* AI聊天头部 */
 .ai-header {
-  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--el-border-color);
   background: var(--el-bg-color-page);
   flex-shrink: 0;
+  height: 48px;
+}
+
+.ai-header-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.ai-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-header-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--el-text-color-regular);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ai-header-btn:hover {
+  background: var(--el-fill-color);
+  color: var(--el-text-color-primary);
+}
+
+.ai-header-btn.active {
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+
+.ai-header-btn.close-btn:hover {
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
+}
+
+/* 聊天历史面板 */
+.chat-history-panel {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  width: 280px;
+  height: calc(100% - 48px);
+  background: var(--el-bg-color-page);
+  border-left: 1px solid var(--el-border-color);
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+}
+
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--el-border-color);
+  background: var(--el-fill-color-extra-light);
+}
+
+.history-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+}
+
+.clear-history-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--el-text-color-regular);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.clear-history-btn:hover {
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
+}
+
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.history-item {
+  position: relative;
+  padding: 12px 16px;
+  margin: 0 8px 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: transparent;
+}
+
+.history-item:hover {
+  background: var(--el-fill-color-light);
+}
+
+.history-item.active {
+  background: var(--el-color-primary-light-9);
+  border: 1px solid var(--el-color-primary-light-7);
+}
+
+.history-item .history-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 24px;
+}
+
+.history-item .history-time {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+
+.delete-chat-btn {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+
+.history-item:hover .delete-chat-btn {
+  opacity: 1;
+}
+
+.delete-chat-btn:hover {
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
+}
+
+.empty-history {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.empty-history .empty-icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+
+.empty-history .empty-text {
+  font-size: 14px;
+  color: var(--el-text-color-secondary);
 }
 
 .toggle-chat-btn {
@@ -1186,5 +1585,27 @@ html, body, #app {
 .app.dark-theme :deep(.el-message-box) {
   background-color: var(--el-bg-color-overlay);
   border-color: var(--el-border-color);
+}
+
+/* 全局下拉菜单向上展示样式 */
+:deep(.el-dropdown-menu) {
+  position: absolute;
+  bottom: 100% !important;
+  top: auto !important;
+  margin-bottom: 8px !important;
+  margin-top: 0 !important;
+  transform-origin: bottom center !important;
+  animation: dropdown-slide-up 0.2s ease !important;
+}
+
+@keyframes dropdown-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

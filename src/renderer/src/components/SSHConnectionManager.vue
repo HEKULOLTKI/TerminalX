@@ -49,74 +49,79 @@
         </el-empty>
       </div>
 
-      <div v-else class="connections-grid">
+      <div v-else class="connections-list">
         <div
           v-for="connection in terminalStore.connections"
           :key="connection.id"
-          class="connection-card"
+          class="connection-row"
         >
-          <div class="connection-header">
-            <div class="connection-name">{{ connection.name }}</div>
-            <el-dropdown trigger="click" @click.stop>
-              <el-button size="small" :icon="MoreFilled" text />
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item @click="editConnection(connection)">
-                    <el-icon><Edit /></el-icon>
-                    编辑
-                  </el-dropdown-item>
-                  <el-dropdown-item @click="duplicateConnection(connection)">
-                    <el-icon><CopyDocument /></el-icon>
-                    复制
-                  </el-dropdown-item>
-                  <el-dropdown-item @click="connectToHost(connection)">
-                    <el-icon><Connection /></el-icon>
-                    连接
-                  </el-dropdown-item>
-                  <el-dropdown-item 
-                    @click="deleteConnection(connection)"
-                    divided
-                  >
-                    <el-icon><Delete /></el-icon>
-                    删除
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </div>
-          
-          <div class="connection-details">
-            <div class="connection-info">
-              <el-icon class="info-icon"><User /></el-icon>
-              <span>{{ connection.username }}@{{ connection.host }}</span>
+          <div class="connection-main">
+            <div class="connection-left">
+              <div class="connection-name">{{ connection.name }}</div>
+              <div class="connection-details">
+                <div class="connection-info">
+                  <el-icon class="info-icon"><User /></el-icon>
+                  <span>{{ connection.username }}@{{ connection.host }}</span>
+                </div>
+                <div class="connection-info">
+                  <el-icon class="info-icon"><Link /></el-icon>
+                  <span>端口: {{ connection.port }}</span>
+                </div>
+                <div class="connection-info">
+                  <el-icon class="info-icon"><Key /></el-icon>
+                  <span>{{ connection.authType === 'password' ? '密码认证' : '私钥认证' }}</span>
+                </div>
+              </div>
             </div>
-            <div class="connection-info">
-              <el-icon class="info-icon"><Link /></el-icon>
-              <span>端口: {{ connection.port }}</span>
+            
+            <div class="connection-right">
+              <el-tag 
+                :type="isConnectionActive(connection) ? 'success' : 'info'" 
+                size="small"
+                class="status-tag"
+              >
+                {{ isConnectionActive(connection) ? '已连接' : '未连接' }}
+              </el-tag>
+              
+              <div class="connection-actions">
+                <el-button 
+                  type="primary" 
+                  size="small" 
+                  :icon="Connection"
+                  @click="connectToHost(connection)"
+                  :disabled="isConnectionActive(connection)"
+                >
+                  {{ isConnectionActive(connection) ? '已连接' : '连接' }}
+                </el-button>
+                
+                <el-dropdown trigger="click" @click.stop>
+                  <el-button size="small" :icon="MoreFilled" text />
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item @click="editConnection(connection)">
+                        <el-icon><Edit /></el-icon>
+                        编辑
+                      </el-dropdown-item>
+                      <el-dropdown-item @click="duplicateConnection(connection)">
+                        <el-icon><CopyDocument /></el-icon>
+                        复制
+                      </el-dropdown-item>
+                      <el-dropdown-item @click="connectToHost(connection)">
+                        <el-icon><Connection /></el-icon>
+                        连接
+                      </el-dropdown-item>
+                      <el-dropdown-item 
+                        @click="deleteConnection(connection)"
+                        divided
+                      >
+                        <el-icon><Delete /></el-icon>
+                        删除
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+              </div>
             </div>
-            <div class="connection-info">
-              <el-icon class="info-icon"><Key /></el-icon>
-              <span>{{ connection.authType === 'password' ? '密码认证' : '私钥认证' }}</span>
-            </div>
-          </div>
-
-          <div class="connection-actions">
-            <el-tag 
-              :type="isConnectionActive(connection) ? 'success' : 'info'" 
-              size="small"
-              class="status-tag"
-            >
-              {{ isConnectionActive(connection) ? '已连接' : '未连接' }}
-            </el-tag>
-            <el-button 
-              type="primary" 
-              size="small" 
-              :icon="Connection"
-              @click="connectToHost(connection)"
-              :disabled="isConnectionActive(connection)"
-            >
-              {{ isConnectionActive(connection) ? '已连接' : '连接' }}
-            </el-button>
           </div>
         </div>
       </div>
@@ -307,56 +312,66 @@ const refreshConnections = () => {
   padding: 40px 20px;
 }
 
-.connections-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
+.connections-list {
+  /* No specific grid layout here, as it's now a list */
 }
 
-.connection-card {
-  border: 1px solid var(--el-border-color);
-  border-radius: 8px;
-  padding: 16px;
-  transition: all 0.2s;
-  background: var(--el-bg-color);
+.connection-row {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
+  transition: all 0.2s;
 }
 
-.connection-card:hover {
+.connection-row:last-child {
+  border-bottom: none;
+}
+
+.connection-row:hover {
+  background: var(--el-fill-color-light);
   border-color: var(--el-color-primary);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-.connection-header {
+.connection-main {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  flex: 1;
+}
+
+.connection-left {
+  flex: 1;
+  margin-right: 16px;
+}
+
+.connection-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .connection-name {
   font-weight: 600;
   font-size: 16px;
   color: var(--el-text-color-primary);
+  margin-bottom: 4px;
 }
 
 .connection-details {
-  margin-bottom: 8px;
-  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--el-text-color-regular);
 }
 
 .connection-info {
   display: flex;
   align-items: center;
-  margin-bottom: 8px;
-  font-size: 14px;
-  color: var(--el-text-color-regular);
-}
-
-.connection-info:last-child {
-  margin-bottom: 0;
+  gap: 4px;
 }
 
 .info-icon {
@@ -368,9 +383,7 @@ const refreshConnections = () => {
 .connection-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  margin-top: 8px;
 }
 
 .status-tag {
@@ -378,23 +391,23 @@ const refreshConnections = () => {
 }
 
 /* 深色主题适配 */
-.dark .connection-card {
+.dark .connection-row {
   background: #2d2d30;
   border-color: #3c3c3c;
 }
 
-.dark .connection-card:hover {
-  border-color: var(--el-color-primary);
+.dark .connection-row:hover {
   background: #363639;
+  border-color: var(--el-color-primary);
 }
 
 /* 清心主题适配 */
-.fresh .connection-card {
+.fresh .connection-row {
   background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
   border: 1px solid #e3f2fd;
 }
 
-.fresh .connection-card:hover {
+.fresh .connection-row:hover {
   border-color: #4285f4;
   background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
   box-shadow: 0 4px 20px rgba(66, 133, 244, 0.15);
