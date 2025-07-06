@@ -74,10 +74,16 @@ export const useTerminalStore = defineStore('terminal', () => {
 
   // 创建新标签页
   const createTab = (connection) => {
+    // 要求必须传入 connection 对象
+    if (!connection) {
+      console.error('创建标签页时必须提供连接信息')
+      return null
+    }
+
     const id = uuidv4()
     const tab = {
       id,
-      title: connection ? `${connection.username}@${connection.host}` : '本地终端',
+      title: `${connection.username}@${connection.host}`, // 直接使用连接信息
       connection,
       isConnected: false,
       terminal: null,
@@ -90,12 +96,16 @@ export const useTerminalStore = defineStore('terminal', () => {
 
   // 关闭标签页
   const closeTab = (tabId) => {
-    const index = tabs.value.findIndex(tab => tab.id === tabId)
+    const index = tabs.value.findIndex((tab) => tab.id === tabId)
     if (index !== -1) {
       const tab = tabs.value[index]
       // 断开SSH连接
       if (tab.ssh) {
         tab.ssh.end()
+      }
+      // 断开串口连接
+      if (tab.connection && tab.connection.type === 'serial' && tab.connectionId) {
+        serialService.disconnect(tab.connectionId)
       }
       // 销毁终端实例
       if (tab.terminal) {

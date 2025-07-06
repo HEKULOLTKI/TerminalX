@@ -24,7 +24,7 @@
     <!-- 终端模式内容 -->
     <template v-if="props.mode === 'terminal'">
       <!-- 快速操作 -->
-      <div class="quick-actions">
+      <!-- <div class="quick-actions">
         <el-button 
           type="primary" 
           :icon="Plus" 
@@ -33,7 +33,7 @@
         >
           新建终端
         </el-button>
-      </div>
+      </div> -->
 
       <!-- 标签页列表 -->
       <div class="tabs-section">
@@ -74,10 +74,70 @@
               description="暂无标签页" 
               :image-size="60"
             >
-              <el-button type="primary" @click="createNewTab">
+              <!-- <el-button type="primary" @click="createNewTab">
                 创建第一个标签页
-              </el-button>
+              </el-button> -->
             </el-empty>
+          </div>
+        </div>
+      </div>
+
+      <!-- SSH 连接 -->
+      <div class="connections-section">
+        <div class="section-header">
+          <span class="section-title">SSH 连接</span>
+          <span class="connection-count">{{ terminalStore.connections.length }}</span>
+        </div>
+        <div class="connection-list">
+          <div
+            v-for="conn in terminalStore.connections"
+            :key="conn.id"
+            class="connection-item"
+            @click="connectToSsh(conn)"
+          >
+            <div class="connection-info">
+              <div class="connection-name">{{ conn.name }}</div>
+              <div class="connection-details">{{ conn.username }}@{{ conn.host }}</div>
+            </div>
+            <el-button 
+              :icon="Connection" 
+              size="small" 
+              text 
+              :disabled="isSshConnectionActive(conn)"
+            />
+          </div>
+          <div v-if="terminalStore.connections.length === 0" class="no-connections">
+            <el-text size="small" type="info">无已保存的 SSH 连接</el-text>
+          </div>
+        </div>
+      </div>
+
+      <!-- 串口连接 -->
+      <div class="connections-section">
+        <div class="section-header">
+          <span class="section-title">串口连接</span>
+          <span class="connection-count">{{ terminalStore.serialConnections.length }}</span>
+        </div>
+        <div class="connection-list">
+          <div
+            v-for="conn in terminalStore.serialConnections"
+            :key="conn.id"
+            class="connection-item"
+            @click="connectToSerial(conn)"
+          >
+            <div class="connection-info">
+              <div class="connection-name">{{ conn.name }}</div>
+              <div class="connection-details">{{ conn.port }}</div>
+            </div>
+            <el-button 
+              :icon="Connection" 
+              size="small" 
+              text 
+              :disabled="isSerialConnectionActive(conn)"
+            />
+          </div>
+          <div v-if="terminalStore.serialConnections.length === 0" class="no-connections">
+            <el-text size="small" type="info">无已保存的串口连接</el-text>
           </div>
         </div>
       </div>
@@ -117,7 +177,8 @@ import {
   Close,
   Setting,
   Sunny,
-  Moon
+  Moon,
+  Connection,
 } from '@element-plus/icons-vue'
 import { useTerminalStore } from '../stores/terminal'
 import SSHConnectionManager from './SSHConnectionManager.vue'
@@ -137,6 +198,48 @@ const terminalStore = useTerminalStore()
 // 连接类型选择
 const activeConnectionType = ref('ssh')
 
+// 检查SSH连接是否已在标签页中打开且处于连接状态
+const isSshConnectionActive = (connection) => {
+  return terminalStore.tabs.some(tab => 
+    tab.connection?.type !== 'serial' &&
+    tab.connection?.host === connection.host && 
+    tab.connection?.port === connection.port && 
+    tab.connection?.username === connection.username &&
+    tab.isConnected
+  )
+}
+
+// 检查串口连接是否已在标签页中打开且处于连接状态
+const isSerialConnectionActive = (connection) => {
+  return terminalStore.tabs.some(tab => 
+    tab.connection?.type === 'serial' &&
+    tab.connection?.port === connection.port &&
+    tab.isConnected
+  )
+}
+
+// 连接到SSH主机
+const connectToSsh = (connection) => {
+  if (isSshConnectionActive(connection)) {
+    ElMessage.info('该连接已在标签页中打开')
+    return
+  }
+  terminalStore.createTab(connection)
+  terminalStore.hideSidebar()
+  ElMessage.success(`正在连接到 ${connection.name}...`)
+}
+
+// 连接到串口
+const connectToSerial = (connection) => {
+  if (isSerialConnectionActive(connection)) {
+    ElMessage.info('该连接已在标签页中打开')
+    return
+  }
+  terminalStore.createSerialTab(connection)
+  terminalStore.hideSidebar()
+  ElMessage.success(`正在连接到 ${connection.name}...`)
+}
+
 // 切换主题
 const toggleTheme = () => {
   const newTheme = terminalStore.currentTheme === 'dark' ? 'fresh' : 'dark'
@@ -150,10 +253,10 @@ const toggleTheme = () => {
 }
 
 // 创建新标签页
-const createNewTab = () => {
-  terminalStore.createTab()
-  ElMessage.success('已创建新标签页')
-}
+// const createNewTab = () => {
+//   terminalStore.createTab()
+//   ElMessage.success('已创建新标签页')
+// }
 </script>
 
 <style scoped>
@@ -496,5 +599,73 @@ const createNewTab = () => {
 
 .fresh .connection-type-tabs :deep(.el-tabs__active-bar) {
   background-color: #4285f4;
+}
+
+.connections-section {
+  padding: 0 16px;
+  border-top: 1px solid var(--el-border-color);
+}
+
+.connection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+  max-height: 200px; /* 限制最大高度，超出则滚动 */
+  overflow-y: auto;
+}
+
+.connection-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.connection-item:hover {
+  background-color: var(--el-fill-color-light);
+}
+
+.connection-info .connection-name {
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+}
+
+.connection-info .connection-details {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.no-connections {
+  padding: 16px;
+  text-align: center;
+}
+
+.tabs-section, .connections-section {
+  padding: 12px 16px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.connection-count {
+  font-size: 12px;
+  background-color: var(--el-fill-color);
+  color: var(--el-text-color-secondary);
+  padding: 2px 6px;
+  border-radius: 8px;
 }
 </style> 

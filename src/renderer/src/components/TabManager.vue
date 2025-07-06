@@ -2,108 +2,125 @@
   <div class="tab-manager">
     <!-- 标签页导航栏 -->
     <div class="tab-nav">
-      <div class="tab-list">
-        <div
-          v-for="tab in terminalStore.tabs"
-          :key="tab.id"
-          :class="['tab-item', { active: tab.id === terminalStore.activeTabId }]"
-          @click="switchTab(tab.id)"
-        >
-          <div class="device-card">
-            <!-- 设备图片区域 -->
-            <div class="device-image">
-              <el-image 
-                v-if="tab.connection && tab.connection.deviceImage"
-                :src="tab.connection.deviceImage" 
-                fit="cover"
-                class="device-img"
-              >
-                <template #error>
-                  <div class="image-slot">
-                    <el-icon class="device-icon">
-                      <Monitor v-if="!tab.connection" />
-                      <Connection v-else />
-                    </el-icon>
-                  </div>
-                </template>
-              </el-image>
-              <div v-else class="image-slot">
-                <el-icon class="device-icon">
-                  <Monitor v-if="!tab.connection" />
-                  <Connection v-else />
-                </el-icon>
-              </div>
-            </div>
-
-            <!-- 设备信息区域 -->
-            <div class="device-info">
-              <div class="device-header">
-                <span class="device-name">{{ tab.title }}</span>
-                <div class="connection-status-badge">
-                  <span 
-                    :class="['status-dot', { 
-                      connected: tab.isConnected, 
-                      disconnected: tab.connection && !tab.isConnected,
-                      local: !tab.connection
-                    }]"
-                  ></span>
-                  <span class="status-text">
-                    {{ getStatusText(tab) }}
-                  </span>
-                </div>
-              </div>
-
-              <div class="device-details" v-if="tab.connection">
-                <div class="detail-row">
-                  <span class="detail-label">IP:</span>
-                  <span class="detail-value">{{ tab.connection.host || '--' }}</span>
-                </div>
-                <div class="detail-row">
-                  <span class="detail-label">端口:</span>
-                  <span class="detail-value">
-                    {{ tab.connection.type === 'serial' ? tab.connection.port : tab.connection.port || 22 }}
-                  </span>
-                </div>
-                <div class="detail-row" v-if="tab.connection.type === 'serial'">
-                  <span class="detail-label">波特率:</span>
-                  <span class="detail-value">{{ tab.connection.baudRate || '--' }}</span>
-                </div>
-                <div class="detail-row">
-                  <span class="detail-label">设备厂商:</span>
-                  <span class="detail-value">{{ tab.connection.manufacturer || '--' }}</span>
-                </div>
-              </div>
-              
-              <div class="device-details" v-else>
-                <div class="detail-row">
-                  <span class="detail-label">IP:</span>
-                  <span class="detail-value">本地主机</span>
-                </div>
-                <div class="detail-row">
-                  <span class="detail-label">端口:</span>
-                  <span class="detail-value">--</span>
-                </div>
-                <div class="detail-row">
-                  <span class="detail-label">波特率:</span>
-                  <span class="detail-value">--</span>
-                </div>
-                <div class="detail-row">
-                  <span class="detail-label">设备厂商:</span>
-                  <span class="detail-value">--</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <el-icon 
-            class="close-btn" 
-            @click.stop="closeTab(tab.id)"
-            v-show="terminalStore.tabs.length > 1"
+       <el-icon
+        class="switch-btn"
+        :class="{ disabled: !canSwitchToPrevious }"
+        @click="switchToPreviousTab"
+        title="上一个标签页"
+      >
+        <CaretLeft />
+      </el-icon>
+      <div class="tab-nav-container">
+        <div class="tab-list" ref="tabListRef">
+          <div
+            v-for="tab in terminalStore.tabs"
+            :key="tab.id"
+            :class="['tab-item', { active: tab.id === terminalStore.activeTabId }]"
+            :ref="el => { if (el) tabElements[tab.id] = el }"
           >
-            <Close />
-          </el-icon>
+            <div class="device-card" @click="switchTab(tab.id)">
+              <!-- 设备图片区域 -->
+              <div class="device-image">
+                <el-image 
+                  v-if="tab.connection && tab.connection.deviceImage"
+                  :src="tab.connection.deviceImage" 
+                  fit="cover"
+                  class="device-img"
+                >
+                  <template #error>
+                    <div class="image-slot">
+                      <el-icon class="device-icon">
+                        <Monitor v-if="!tab.connection" />
+                        <Connection v-else />
+                      </el-icon>
+                    </div>
+                  </template>
+                </el-image>
+                <div v-else class="image-slot">
+                  <el-icon class="device-icon">
+                    <Monitor v-if="!tab.connection" />
+                    <Connection v-else />
+                  </el-icon>
+                </div>
+              </div>
+
+              <!-- 设备信息区域 -->
+              <div class="device-info">
+                <div class="device-header">
+                  <span class="device-name">{{ tab.title }}</span>
+                  <div class="connection-status-badge">
+                    <span 
+                      :class="['status-dot', { 
+                        connected: tab.isConnected, 
+                        disconnected: tab.connection && !tab.isConnected,
+                        local: !tab.connection
+                      }]"
+                    ></span>
+                    <span class="status-text">
+                      {{ getStatusText(tab) }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="device-details" v-if="tab.connection">
+                  <div class="detail-row">
+                    <span class="detail-label">IP:</span>
+                    <span class="detail-value">{{ tab.connection.host || '--' }}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">端口:</span>
+                    <span class="detail-value">
+                      {{ tab.connection.type === 'serial' ? tab.connection.port : tab.connection.port || 22 }}
+                    </span>
+                  </div>
+                  <div class="detail-row" v-if="tab.connection.type === 'serial'">
+                    <span class="detail-label">波特率:</span>
+                    <span class="detail-value">{{ tab.connection.baudRate || '--' }}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">设备厂商:</span>
+                    <span class="detail-value">{{ tab.connection.manufacturer || '--' }}</span>
+                  </div>
+                </div>
+                
+                <div class="device-details" v-else>
+                  <div class="detail-row">
+                    <span class="detail-label">IP:</span>
+                    <span class="detail-value">本地主机</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">端口:</span>
+                    <span class="detail-value">--</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">波特率:</span>
+                    <span class="detail-value">--</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">设备厂商:</span>
+                    <span class="detail-value">--</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <el-icon 
+              class="close-btn" 
+              @click.stop="closeTab(tab.id)"
+            >
+              <Close />
+            </el-icon>
+          </div>
         </div>
       </div>
+      <el-icon
+        class="switch-btn"
+        :class="{ disabled: !canSwitchToNext }"
+        @click="switchToNextTab"
+        title="下一个标签页"
+      >
+        <CaretRight />
+      </el-icon>
     </div>
 
     <!-- 标签页内容区域 -->
@@ -172,12 +189,14 @@
 </template>
 
 <script setup>
-import { nextTick, ref, reactive } from 'vue'
+import { nextTick, ref, reactive, onMounted, onUnmounted, watch, computed, onBeforeUpdate } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { 
   Monitor, 
   Connection, 
-  Close
+  Close,
+  CaretLeft,
+  CaretRight
 } from '@element-plus/icons-vue'
 import { useTerminalStore } from '../stores/terminal'
 import Terminal from './Terminal.vue'
@@ -185,234 +204,168 @@ import SSHConnection from './SSHConnection.vue'
 
 const terminalStore = useTerminalStore()
 
-// 对话框状态
+const switchTab = (tabId) => {
+  terminalStore.switchTab(tabId)
+}
+
+// 存储对标签页元素的引用
+const tabElements = reactive({})
+
+onBeforeUpdate(() => {
+  // 在组件更新前，清空引用，以防内存泄漏和旧引用
+  Object.keys(tabElements).forEach(key => delete tabElements[key])
+})
+
+// 监听活动标签页的变化，并将其滚动到视图中
+watch(
+  () => terminalStore.activeTabId,
+  (newId) => {
+    if (newId && tabElements[newId]) {
+      nextTick(() => {
+        tabElements[newId].scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'center'
+        })
+      })
+    }
+  },
+  { flush: 'post' }
+)
+
+
+// 标签页滚动
+const tabListRef = ref(null)
+const showScrollButtons = ref(false)
+
+const checkScroll = () => {
+  nextTick(() => {
+    const el = tabListRef.value
+    if (el) {
+      showScrollButtons.value = el.scrollWidth > el.clientWidth
+    }
+  })
+}
+
+const scrollTabs = (amount) => {
+  const el = tabListRef.value
+  if (el) {
+    el.scrollTo({
+      left: el.scrollLeft + amount,
+      behavior: 'smooth'
+    })
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('resize', checkScroll)
+  checkScroll()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkScroll)
+})
+
+watch(() => terminalStore.tabs, () => {
+  checkScroll()
+}, { deep: true, flush: 'post' })
+
+
+// 切换上一个/下一个标签页
+const activeIndex = computed(() => terminalStore.tabs.findIndex(t => t.id === terminalStore.activeTabId))
+
+const canSwitchToPrevious = computed(() => activeIndex.value > 0)
+const canSwitchToNext = computed(() => activeIndex.value < terminalStore.tabs.length - 1)
+
+const switchToPreviousTab = () => {
+  if (canSwitchToPrevious.value) {
+    const previousTab = terminalStore.tabs[activeIndex.value - 1]
+    switchTab(previousTab.id)
+  }
+}
+
+const switchToNextTab = () => {
+  if (canSwitchToNext.value) {
+    const nextTab = terminalStore.tabs[activeIndex.value + 1]
+    switchTab(nextTab.id)
+  }
+}
+
+
+const closeTab = (tabId) => {
+  terminalStore.removeTab(tabId)
+}
+
+const getStatusText = (tab) => {
+  if (tab.isConnected) return '已连接'
+  if (tab.connection) return '未连接'
+  return '本地终端'
+}
+
+// 新建SSH连接
 const showNewSSHConnection = ref(false)
-const showQuickConnect = ref(false)
 const sshConnectionRef = ref(null)
 
-// 快速连接表单
+const newSSHConnection = () => {
+  showNewSSHConnection.value = true
+}
+
+const handleSSHConnectionSuccess = (connectionInfo) => {
+  terminalStore.addTab({
+    type: 'ssh',
+    title: `${connectionInfo.username}@${connectionInfo.host}`,
+    connection: connectionInfo,
+    isActive: true
+  })
+  showNewSSHConnection.value = false
+}
+
+
+// 快速连接
+const showQuickConnect = ref(false)
 const quickConnectForm = reactive({
   host: '',
   username: ''
 })
 
-// 切换标签页
-const switchTab = (tabId) => {
-  terminalStore.switchTab(tabId)
+const quickConnect = () => {
+  showQuickConnect.value = true
 }
 
-// 关闭标签页
-const closeTab = async (tabId) => {
-  const tab = terminalStore.tabs.find(t => t.id === tabId)
-  
-  // 如果是SSH连接且正在连接中，询问用户确认
-  if (tab && tab.connection && tab.isConnected) {
-    try {
-      await ElMessageBox.confirm(
-        `是否要关闭连接到 ${tab.connection.host} 的SSH会话？`,
-        '确认关闭',
-        {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        }
-      )
-    } catch {
-      return // 用户取消
-    }
-  }
-  
-  terminalStore.closeTab(tabId)
-  ElMessage.success('标签页已关闭')
-}
-
-// 关闭其他标签页
-const closeOtherTabs = async () => {
-  const activeTab = terminalStore.getActiveTab()
-  if (!activeTab) return
-
-  const hasConnectedTabs = terminalStore.tabs.some(tab => 
-    tab.id !== activeTab.id && tab.connection && tab.isConnected
-  )
-
-  if (hasConnectedTabs) {
-    try {
-      await ElMessageBox.confirm(
-        '这将关闭所有其他SSH连接，是否继续？',
-        '确认关闭',
-        {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        }
-      )
-    } catch {
-      return
-    }
-  }
-
-  const tabsToClose = terminalStore.tabs.filter(tab => tab.id !== activeTab.id)
-  tabsToClose.forEach(tab => {
-    terminalStore.closeTab(tab.id)
-  })
-  
-  ElMessage.success('其他标签页已关闭')
-}
-
-// 关闭所有标签页
-const closeAllTabs = async () => {
-  const hasConnectedTabs = terminalStore.tabs.some(tab => 
-    tab.connection && tab.isConnected
-  )
-
-  if (hasConnectedTabs) {
-    try {
-      await ElMessageBox.confirm(
-        '这将关闭所有SSH连接，是否继续？',
-        '确认关闭',
-        {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        }
-      )
-    } catch {
-      return
-    }
-  }
-
-  const allTabs = [...terminalStore.tabs]
-  allTabs.forEach(tab => {
-    terminalStore.closeTab(tab.id)
-  })
-  
-  ElMessage.success('所有标签页已关闭')
-}
-
-// 复制当前标签页
-const duplicateCurrentTab = () => {
-  const activeTab = terminalStore.getActiveTab()
-  if (!activeTab) return
-
-  if (activeTab.connection) {
-    // 如果是SSH连接，创建相同配置的新连接
-    terminalStore.createTab(activeTab.connection)
-    ElMessage.success('已复制SSH连接标签页')
-  } else {
-    // 如果是本地终端，创建新的本地终端
-    terminalStore.createTab(null)
-    ElMessage.success('已复制本地终端标签页')
-  }
-}
-
-// 创建新标签页
-const createNewTab = () => {
-  terminalStore.createTab(null)
-}
-
-// 键盘快捷键处理
-const handleKeydown = (event) => {
-  // Ctrl+T 新建标签页
-  if (event.ctrlKey && event.key === 't') {
-    event.preventDefault()
-    createNewTab()
-  }
-  
-  // Ctrl+W 关闭当前标签页
-  if (event.ctrlKey && event.key === 'w') {
-    event.preventDefault()
-    const activeTab = terminalStore.getActiveTab()
-    if (activeTab) {
-      closeTab(activeTab.id)
-    }
-  }
-  
-  // Ctrl+Tab 切换到下一个标签页
-  if (event.ctrlKey && event.key === 'Tab') {
-    event.preventDefault()
-    const currentIndex = terminalStore.tabs.findIndex(tab => 
-      tab.id === terminalStore.activeTabId
-    )
-    const nextIndex = (currentIndex + 1) % terminalStore.tabs.length
-    if (terminalStore.tabs[nextIndex]) {
-      switchTab(terminalStore.tabs[nextIndex].id)
-    }
-  }
-  
-  // Ctrl+Shift+Tab 切换到上一个标签页
-  if (event.ctrlKey && event.shiftKey && event.key === 'Tab') {
-    event.preventDefault()
-    const currentIndex = terminalStore.tabs.findIndex(tab => 
-      tab.id === terminalStore.activeTabId
-    )
-    const prevIndex = currentIndex === 0 ? 
-      terminalStore.tabs.length - 1 : currentIndex - 1
-    if (terminalStore.tabs[prevIndex]) {
-      switchTab(terminalStore.tabs[prevIndex].id)
-    }
-  }
-  
-  // Ctrl+数字键 切换到指定标签页
-  if (event.ctrlKey && /^[1-9]$/.test(event.key)) {
-    event.preventDefault()
-    const index = parseInt(event.key) - 1
-    if (terminalStore.tabs[index]) {
-      switchTab(terminalStore.tabs[index].id)
-    }
-  }
-}
-
-// 监听键盘事件
-document.addEventListener('keydown', handleKeydown)
-
-// 初始化时创建一个默认标签页
-if (terminalStore.tabs.length === 0) {
-  nextTick(() => {
-    createNewTab()
-  })
-}
-
-// SSH连接处理
-const handleSSHConnectionSuccess = (data) => {
-  showNewSSHConnection.value = false
-  sshConnectionRef.value?.resetForm()
-  ElMessage.success('SSH连接已建立')
-}
-
-// 快速连接处理
 const handleQuickConnect = () => {
   if (!quickConnectForm.host || !quickConnectForm.username) {
-    ElMessage.warning('请填写主机地址和用户名')
+    ElMessage.warning('请输入主机和用户名')
     return
   }
-
-  const connectionConfig = {
-    name: `${quickConnectForm.username}@${quickConnectForm.host}`,
-    host: quickConnectForm.host,
-    port: 22,
+  
+  const connectionInfo = { 
+    id: `quick_${Date.now()}`,
+    type: 'ssh', 
+    host: quickConnectForm.host, 
     username: quickConnectForm.username,
-    authType: 'password',
-    password: ''
+    // 使用默认端口
+    port: 22 
   }
 
-  // 创建新标签页并连接
-  terminalStore.createTab(connectionConfig)
-  
-  // 重置表单并关闭对话框
+  terminalStore.addTab({
+    title: `${connectionInfo.username}@${connectionInfo.host}`,
+    connection: connectionInfo,
+    type: 'ssh',
+    isActive: true
+  })
+
+  showQuickConnect.value = false
   quickConnectForm.host = ''
   quickConnectForm.username = ''
-  showQuickConnect.value = false
-  
-  ElMessage.success(`正在连接到 ${connectionConfig.host}...`)
 }
 
-// 获取连接状态文本
-const getStatusText = (tab) => {
-  if (!tab.connection) {
-    return '本地终端'
-  }
-  return tab.isConnected ? '已连接' : '未连接'
-}
+
+// 暴露给父组件
+defineExpose({
+  newSSHConnection,
+  quickConnect
+})
+
 </script>
 
 <style scoped>
@@ -420,370 +373,275 @@ const getStatusText = (tab) => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background-color: var(--el-bg-color);
+  background-color: #f0f2f5;
+  overflow: hidden;
 }
 
-/* 清心主题下的标签管理器 */
-.fresh-theme .tab-manager {
-  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
-}
-
+/* 标签页导航栏 */
 .tab-nav {
   display: flex;
   align-items: center;
-  border-bottom: 1px solid var(--el-border-color);
-  background-color: var(--el-bg-color-page);
-  padding: 0 8px;
-  min-height: 40px;
+  flex-shrink: 0;
+  padding: 8px;
+  background-color: #e9eef3;
+  border-bottom: 1px solid #dcdfe6;
 }
 
-/* 清心主题下的标签导航栏 */
-.fresh-theme .tab-nav {
-  background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
-  border-bottom: 1px solid #d6e9ff;
-  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.08);
+.tab-nav-container {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  position: relative;
 }
+
+.scroll-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 20px;
+  cursor: pointer;
+  color: #606266;
+  z-index: 10;
+  background-color: rgba(233, 238, 243, 0.8);
+  border-radius: 50%;
+  padding: 4px;
+}
+.scroll-btn.left { left: 0; }
+.scroll-btn.right { right: 0; }
+.scroll-btn:hover { color: #409eff; }
+
+.switch-btn {
+  font-size: 24px;
+  cursor: pointer;
+  margin: 0 5px;
+  color: #606266;
+}
+.switch-btn:hover {
+  color: #409eff;
+}
+.switch-btn.disabled {
+  cursor: not-allowed;
+  color: #c0c4cc;
+}
+
 
 .tab-list {
   display: flex;
-  flex: 1;
+  flex-direction: row;
+  align-items: stretch; /* 确保子项高度一致 */
+  padding-bottom: 5px; /* 为滚动条留出空间 */
   overflow-x: auto;
-  gap: 8px;
-  padding: 4px 0;
-  align-items: flex-start;
+  overflow-y: hidden;
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: #c5c5c5 #f1f1f1; /* Firefox */
+}
+
+/* Chrome/Safari aA */
+.tab-list::-webkit-scrollbar {
+  height: 8px;
+}
+.tab-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+.tab-list::-webkit-scrollbar-thumb {
+  background: #c5c5c5;
+  border-radius: 4px;
+}
+.tab-list::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
 }
 
 .tab-item {
   position: relative;
   display: flex;
-  align-items: stretch;
-  padding: 8px 12px;
-  margin: 4px 0;
+  flex-direction: column; /* 保持内部垂直布局 */
+  flex-shrink: 0;
+  width: 280px; /* 固定宽度 */
+  margin-right: 10px;
   border-radius: 8px;
+  background-color: #fff;
+  border: 1px solid #dcdfe6;
   cursor: pointer;
-  transition: all 0.2s;
-  background-color: var(--el-fill-color-light);
-  border: 1px solid transparent;
-  min-width: 300px;
-  max-width: 400px;
-  min-height: 120px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
-
-.tab-item:hover {
-  background-color: var(--el-fill-color);
+.tab-item:last-child {
+  margin-right: 0;
 }
 
 .tab-item.active {
-  background-color: var(--el-color-primary-light-9);
-  border-color: var(--el-color-primary-light-7);
-  color: var(--el-color-primary);
+  border-color: #409eff;
+  background-color: #ecf5ff;
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.2);
 }
-
-/* 清心主题下的标签项目 */
-.fresh-theme .tab-item {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid #e3f2fd;
-  color: #2c3e50;
-  backdrop-filter: blur(5px);
-}
-
-.fresh-theme .tab-item:hover {
-  background: rgba(240, 247, 255, 0.95);
-  border-color: #b3d9ff;
-  color: #1565c0;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(66, 133, 244, 0.15);
-}
-
-.fresh-theme .tab-item.active {
-  background: linear-gradient(135deg, #4285f4 0%, #1976d2 100%);
-  border-color: #4285f4;
-  color: white;
-  box-shadow: 0 4px 16px rgba(66, 133, 244, 0.3);
-}
-
-/* 设备卡片样式 */
-.device-card {
-  display: flex;
-  flex: 1;
-  gap: 12px;
-  overflow: hidden;
-}
-
-/* 设备图片区域 */
-.device-image {
-  flex-shrink: 0;
-  width: 80px;
-  height: 80px;
-  border-radius: 6px;
-  overflow: hidden;
-  background-color: var(--el-fill-color);
-  border: 1px solid var(--el-border-color);
-}
-
-.device-img {
-  width: 100%;
-  height: 100%;
-}
-
-.image-slot {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(135deg, var(--el-fill-color) 0%, var(--el-fill-color-light) 100%);
-}
-
-.device-icon {
-  font-size: 24px;
-  color: var(--el-text-color-placeholder);
-}
-
-/* 设备信息区域 */
-.device-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  min-width: 0;
-}
-
-.device-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 8px;
-}
-
-.device-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  margin-right: 8px;
-}
-
-.connection-status-badge {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background-color: var(--el-fill-color);
-  flex-shrink: 0;
-}
-
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: var(--el-color-info);
-}
-
-.status-dot.connected {
-  background-color: var(--el-color-success);
-  box-shadow: 0 0 4px rgba(103, 194, 58, 0.5);
-}
-
-.status-dot.disconnected {
-  background-color: var(--el-color-warning);
-  box-shadow: 0 0 4px rgba(230, 162, 60, 0.5);
-}
-
-.status-dot.local {
-  background-color: var(--el-color-primary);
-  box-shadow: 0 0 4px rgba(64, 158, 255, 0.5);
-}
-
-.status-text {
-  font-size: 10px;
-  color: var(--el-text-color-regular);
-  font-weight: 500;
-}
-
-.device-details {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.detail-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.detail-label {
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
-  font-weight: 500;
-  min-width: 40px;
-}
-
-.detail-value {
-  font-size: 11px;
-  color: var(--el-text-color-primary);
-  font-weight: 600;
-  text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 120px;
-}
-
-/* 清心主题下的设备卡片 */
-.fresh-theme .device-image {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(240, 247, 255, 0.9) 100%);
-  border-color: #d6e9ff;
-  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.1);
-}
-
-.fresh-theme .image-slot {
-  background: linear-gradient(135deg, rgba(240, 247, 255, 0.8) 0%, rgba(227, 242, 253, 0.8) 100%);
-}
-
-.fresh-theme .device-icon {
-  color: #4285f4;
-  text-shadow: 0 0 10px rgba(66, 133, 244, 0.3);
-}
-
-.fresh-theme .device-name {
-  color: #1565c0;
-  font-weight: 700;
-}
-
-.fresh-theme .connection-status-badge {
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid #e3f2fd;
-  backdrop-filter: blur(5px);
-}
-
-.fresh-theme .status-dot.connected {
-  background: #2ecc71;
-  box-shadow: 0 0 8px rgba(46, 204, 113, 0.6);
-}
-
-.fresh-theme .status-dot.disconnected {
-  background: #f39c12;
-  box-shadow: 0 0 8px rgba(243, 156, 18, 0.6);
-}
-
-.fresh-theme .status-dot.local {
-  background: #4285f4;
-  box-shadow: 0 0 8px rgba(66, 133, 244, 0.6);
-}
-
-.fresh-theme .status-text {
-  color: #34495e;
-  font-weight: 600;
-}
-
-.fresh-theme .detail-label {
-  color: #5f6368;
-  font-weight: 600;
-}
-
-.fresh-theme .detail-value {
-  color: #1565c0;
-  font-weight: 700;
+.tab-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
 }
 
 .close-btn {
   position: absolute;
   top: 8px;
   right: 8px;
-  padding: 4px;
-  border-radius: 4px;
-  font-size: 12px;
-  opacity: 0.6;
+  font-size: 14px;
+  color: #909399;
+  cursor: pointer;
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  padding: 2px;
   transition: all 0.2s;
-  background-color: var(--el-fill-color);
-  z-index: 1;
 }
-
 .close-btn:hover {
-  opacity: 1;
-  background-color: var(--el-color-danger-light-9);
-  color: var(--el-color-danger);
-  transform: scale(1.1);
+  color: #fff;
+  background-color: #f56c6c;
 }
-
-/* 关闭按钮在清心主题下的样式 */
-.fresh-theme .close-btn {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid #e3f2fd;
-  backdrop-filter: blur(5px);
+.active .close-btn {
+   background-color: rgba(236, 245, 255, 0.5);
 }
-
-.fresh-theme .close-btn:hover {
-  background-color: rgba(244, 67, 54, 0.1);
-  color: #f44336;
-  border-color: #f44336;
+.active .close-btn:hover {
+  color: #fff;
+  background-color: #f56c6c;
 }
 
 
-
-.tab-content-area {
-  flex: 1;
-  overflow: hidden;
-  position: relative;
+/* 设备卡片 */
+.device-card {
+  display: flex;
+  padding: 12px;
+  flex-grow: 1;
 }
 
-/* 清心主题下的标签内容区域 - 终端区域保持黑色 */
-.fresh-theme .tab-content-area {
-  background: #1e1e1e;
-}
-
-.tab-pane {
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-
-.empty-state {
+.device-image {
+  flex-shrink: 0;
+  width: 80px;
+  height: 80px;
+  margin-right: 12px;
+  border-radius: 6px;
+  background-color: #f5f7fa;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+}
+.device-img {
+  width: 100%;
+  height: 100%;
+}
+.image-slot {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #e9eef3;
+}
+.device-icon {
+  font-size: 40px;
+  color: #a8abb2;
+}
+
+
+.device-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex-grow: 1;
+  min-width: 0; /* 防止flex item溢出 */
+}
+
+.device-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.device-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 8px;
+}
+
+.connection-status-badge {
+  display: flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background-color: #f0f2f5;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+.status-dot.connected { background-color: #67c23a; }
+.status-dot.disconnected { background-color: #f56c6c; }
+.status-dot.local { background-color: #409eff; }
+
+.status-text {
+  color: #606266;
+}
+
+.device-details {
+  font-size: 13px;
+  color: #606266;
+}
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+.detail-label {
+  color: #909399;
+  margin-right: 8px;
+}
+.detail-value {
+  font-weight: 500;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* 标签页内容 */
+.tab-content-area {
+  flex-grow: 1;
+  position: relative;
+  background-color: #fff;
+}
+.tab-pane {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100%;
+  width: 100%;
+}
+
+
+.empty-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
   height: 100%;
 }
 
-/* 滚动条样式 */
-.tab-list::-webkit-scrollbar {
-  height: 4px;
-}
-
-.tab-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.tab-list::-webkit-scrollbar-thumb {
-  background: var(--el-border-color);
-  border-radius: 2px;
-}
-
-.tab-list::-webkit-scrollbar-thumb:hover {
-  background: var(--el-border-color-darker);
-}
-
-/* 快速连接样式 */
 .quick-connect-form {
-  padding: 20px 0;
+  padding: 0 20px;
 }
-
 .quick-connect-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
+  text-align: right;
   margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid var(--el-border-color);
 }
-
-
 </style> 
