@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
+import { serialService } from '../services/serial'
 
 export const useTerminalStore = defineStore('terminal', () => {
   // 当前活跃的标签页
@@ -138,7 +139,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   }
 
   // 创建串口标签页
-  const createSerialTab = (connection) => {
+  const createSerialTab = async (connection) => {
     const id = uuidv4()
     const tab = {
       id,
@@ -149,10 +150,73 @@ export const useTerminalStore = defineStore('terminal', () => {
       },
       isConnected: false,
       terminal: null,
-      serial: null
+      connectionId: null
     }
+
     tabs.value.push(tab)
     activeTabId.value = id
+
+    try {
+      const connectionConfig = JSON.parse(JSON.stringify(connection))
+      // connect 成功时返回 { connectionId, ... }, 失败时抛出错误
+      const result = await serialService.connect(connectionConfig)
+
+      const { connectionId } = result
+      const tabInStore = tabs.value.find(t => t.id === id)
+      if (tabInStore) {
+        tabInStore.connectionId = connectionId
+      }
+
+      serialService.on(connectionId, 'ready', () => {
+        const currentTab = tabs.value.find(t => t.id === id)
+        if (currentTab) {
+          currentTab.isConnected = true
+          if (currentTab.terminal) {
+            currentTab.terminal.writeln('\r\n\x1b[32m连接成功!\x1b[0m')
+          }
+        }
+      })
+      
+      serialService.on(connectionId, 'data', (data) => {
+        const currentTab = tabs.value.find(t => t.id === id)
+        if (currentTab && currentTab.terminal) {
+          currentTab.terminal.write(data)
+        }
+      })
+      
+      serialService.on(connectionId, 'close', () => {
+        const currentTab = tabs.value.find(t => t.id === id)
+        if (currentTab) {
+          currentTab.isConnected = false
+          if (currentTab.terminal) {
+            currentTab.terminal.writeln('\r\n\x1b[31m连接已断开\x1b[0m')
+          }
+        }
+      })
+
+      serialService.on(connectionId, 'error', (error) => {
+        const currentTab = tabs.value.find(t => t.id === id)
+        if (currentTab) {
+          currentTab.isConnected = false
+          if (currentTab.terminal) {
+            currentTab.terminal.writeln(`\r\n\x1b[31m连接错误: ${error}\x1b[0m`)
+          }
+        }
+      })
+    } catch (error) {
+      console.error('Failed to connect to serial port:', error)
+      const tabInStore = tabs.value.find(t => t.id === id)
+      if (tabInStore) {
+        tabInStore.isConnected = false
+        // 延迟执行，确保terminal实例已创建
+        setTimeout(() => {
+          if (tabInStore.terminal) {
+            tabInStore.terminal.writeln(`\r\n\x1b[31m连接失败: ${error.message}\x1b[0m`)
+          }
+        }, 100)
+      }
+    }
+
     return tab
   }
 
@@ -166,6 +230,13 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
     serialConnections.value.push(connection)
     return connection
+  }
+
+  const updateSerialConnection = (config) => {
+    const index = serialConnections.value.findIndex(c => c.id === config.id)
+    if (index !== -1) {
+      serialConnections.value[index] = config
+    }
   }
 
   // 删除串口连接配置
@@ -184,6 +255,14 @@ export const useTerminalStore = defineStore('terminal', () => {
   // 获取当前活跃标签
   const getActiveTab = () => {
     return tabs.value.find(tab => tab.id === activeTabId.value)
+  }
+
+  // 更新标签页信息
+  const updateTab = (tabToUpdate) => {
+    const index = tabs.value.findIndex((tab) => tab.id === tabToUpdate.id)
+    if (index !== -1) {
+      tabs.value[index] = { ...tabs.value[index], ...tabToUpdate }
+    }
   }
 
   // 获取当前主题配置
@@ -224,11 +303,13 @@ export const useTerminalStore = defineStore('terminal', () => {
     removeConnection,
     addSerialConnection,
     removeSerialConnection,
+    updateSerialConnection,
     setTheme,
     getActiveTab,
     getCurrentTheme,
     toggleSidebar,
     setSidebarMode,
-    hideSidebar
+    hideSidebar,
+    updateTab
   }
 }) 

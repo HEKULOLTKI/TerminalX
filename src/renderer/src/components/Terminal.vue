@@ -12,6 +12,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
 import { useTerminalStore } from '../stores/terminal'
 import { sshService } from '../services/ssh'
+import { serialService } from '../services/serial'
 import '@xterm/xterm/css/xterm.css'
 
 const props = defineProps({
@@ -30,6 +31,7 @@ let fitAddon = null
 let webLinksAddon = null
 let searchAddon = null
 let sshConnectionId = null
+let serialConnectionId = null
 let currentTab = null
 
 const initTerminal = () => {
@@ -93,8 +95,13 @@ const initTerminal = () => {
   currentTab = terminalStore.tabs.find(t => t.id === props.tabId)
   
   if (currentTab && currentTab.connection) {
-    // SSH连接模式
-    initSSHConnection(currentTab.connection)
+    if (currentTab.connection.type === 'serial') {
+      // 串口连接模式
+      initSerialConnection()
+    } else {
+      // SSH连接模式
+      initSSHConnection(currentTab.connection)
+    }
   } else {
     // 本地终端模式
     initLocalTerminal()
@@ -189,7 +196,27 @@ const initSSHConnection = async (connection) => {
   }
 }
 
-// 初始化本地终端
+// 初始化串口连接
+const initSerialConnection = () => {
+  if (!currentTab || !currentTab.connection) return
+
+  // 连接逻辑已移至store，此处仅处理UI显示和用户输入
+  if (currentTab.isConnected) {
+    terminal.writeln('\r\n\x1b[32m已连接到串口\x1b[0m')
+  } else {
+    terminal.writeln(`正在连接到串口 ${currentTab.connection.port}...`)
+    terminal.writeln(`配置: ${currentTab.connection.baudRate} bps, ${currentTab.connection.dataBits}${currentTab.connection.parity.charAt(0).toUpperCase()}${currentTab.connection.stopBits}`)
+  }
+
+  // 处理用户输入
+  terminal.onData((data) => {
+    if (currentTab && currentTab.connectionId && currentTab.isConnected) {
+      serialService.write(currentTab.connectionId, data)
+    }
+  })
+}
+
+// 初始化本地终端 (伪终端)
 const initLocalTerminal = () => {
   // 欢迎信息
   terminal.writeln('欢迎使用 TerminalX!')

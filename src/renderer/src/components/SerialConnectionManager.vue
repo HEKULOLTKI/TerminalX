@@ -134,9 +134,9 @@
       width="500px"
       :close-on-click-modal="false"
     >
-      <SerialConnection 
-        ref="newConnectionRef"
-        @connected="handleConnectionSuccess"
+      <SerialConnectionForm
+        :session="{}"
+        @saved="handleSave"
         @cancelled="showNewConnection = false"
       />
     </el-dialog>
@@ -148,11 +148,10 @@
       width="500px"
       :close-on-click-modal="false"
     >
-      <SerialConnection 
-        ref="editConnectionRef"
-        :connection="editingConnection"
+      <SerialConnectionForm
+        :session="editingConnection"
         :editing="true"
-        @connected="handleConnectionSuccess"
+        @saved="handleSave"
         @cancelled="showEditConnection = false"
       />
     </el-dialog>
@@ -177,7 +176,7 @@ import {
   Refresh
 } from '@element-plus/icons-vue'
 import { useTerminalStore } from '../stores/terminal'
-import SerialConnection from './SerialConnection.vue'
+import SerialConnectionForm from './SerialConnectionForm.vue'
 
 const terminalStore = useTerminalStore()
 
@@ -187,8 +186,6 @@ const showEditConnection = ref(false)
 
 // 编辑连接相关
 const editingConnection = ref(null)
-const newConnectionRef = ref(null)
-const editConnectionRef = ref(null)
 
 // 检查连接是否处于活跃状态
 const isConnectionActive = (connection) => {
@@ -244,17 +241,9 @@ const deleteConnection = async (connection) => {
 }
 
 // 处理连接成功
-const handleConnectionSuccess = (data) => {
+const handleSave = () => {
   showNewConnection.value = false
   showEditConnection.value = false
-  
-  // 可选：清理表单
-  if (newConnectionRef.value) {
-    newConnectionRef.value.resetForm()
-  }
-  if (editConnectionRef.value) {
-    editConnectionRef.value.resetForm()
-  }
 }
 
 // 刷新串口列表

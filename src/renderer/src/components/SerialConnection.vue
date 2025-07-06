@@ -1,227 +1,231 @@
 <template>
-  <div class="serial-connection">
-    <el-form :model="connectionForm" ref="formRef" :rules="rules" label-width="80px">
-      <el-form-item label="名称" prop="name">
-        <el-input v-model="connectionForm.name" placeholder="连接名称" />
-      </el-form-item>
-      
-      <el-form-item label="串口" prop="port">
-        <el-select 
-          v-model="connectionForm.port" 
-          placeholder="选择串口"
-          style="width: 100%"
-          @focus="refreshPorts"
-        >
-          <el-option
-            v-for="port in availablePorts"
-            :key="port.path"
-            :label="`${port.path} - ${port.manufacturer || '未知设备'}`"
-            :value="port.path"
-          />
+  <div class="serial-connection-wrapper">
+    <div class="connection-header">
+      <span class="status-indicator" :class="status"></span>
+      <span class="connection-name">{{ session.name }}</span>
+      <div class="header-controls">
+        <el-select v-model="encoding" placeholder="编码" size="small" style="width: 100px;">
+          <el-option label="UTF-8" value="utf8" />
+          <el-option label="Hex" value="hex" />
+          <el-option label="Base64" value="base64" />
         </el-select>
-      </el-form-item>
-      
-      <el-form-item label="波特率" prop="baudRate">
-        <el-select v-model="connectionForm.baudRate" placeholder="选择波特率">
-          <el-option label="9600" :value="9600" />
-          <el-option label="19200" :value="19200" />
-          <el-option label="38400" :value="38400" />
-          <el-option label="57600" :value="57600" />
-          <el-option label="115200" :value="115200" />
-          <el-option label="230400" :value="230400" />
-          <el-option label="460800" :value="460800" />
-          <el-option label="921600" :value="921600" />
-        </el-select>
-      </el-form-item>
-      
-      <el-form-item label="数据位" prop="dataBits">
-        <el-select v-model="connectionForm.dataBits">
-          <el-option label="5" :value="5" />
-          <el-option label="6" :value="6" />
-          <el-option label="7" :value="7" />
-          <el-option label="8" :value="8" />
-        </el-select>
-      </el-form-item>
-      
-      <el-form-item label="停止位" prop="stopBits">
-        <el-select v-model="connectionForm.stopBits">
-          <el-option label="1" :value="1" />
-          <el-option label="1.5" :value="1.5" />
-          <el-option label="2" :value="2" />
-        </el-select>
-      </el-form-item>
-      
-      <el-form-item label="校验位" prop="parity">
-        <el-select v-model="connectionForm.parity">
-          <el-option label="无" value="none" />
-          <el-option label="奇校验" value="odd" />
-          <el-option label="偶校验" value="even" />
-          <el-option label="标记" value="mark" />
-          <el-option label="空格" value="space" />
-        </el-select>
-      </el-form-item>
-      
-      <el-form-item label="流控制" prop="flowControl">
-        <el-select v-model="connectionForm.flowControl">
-          <el-option label="无" value="none" />
-          <el-option label="硬件(RTS/CTS)" value="hardware" />
-          <el-option label="软件(XON/XOFF)" value="software" />
-        </el-select>
-      </el-form-item>
-      
-      <el-form-item>
-        <el-button type="primary" @click="handleConnect" :loading="connecting">
-          {{ editing ? '更新并连接' : '连接' }}
-        </el-button>
-        <el-button @click="handleCancel">取消</el-button>
-      </el-form-item>
-    </el-form>
+        <el-switch v-model="dtr" active-text="DTR" @change="handleDtrChange" />
+        <el-switch v-model="rts" active-text="RTS" @change="handleRtsChange" />
+      </div>
+      <div class="header-actions">
+        <el-button
+          type="danger"
+          :icon="Close"
+          circle
+          size="small"
+          @click="$emit('disconnect')"
+        />
+      </div>
+    </div>
+    <div class="terminal-container" ref="terminalContainer"></div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, watch, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { Terminal } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
+import '@xterm/xterm/css/xterm.css'
+import { Close } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { useTerminalStore } from '../stores/terminal'
+import { serialService } from './services/serial'
 
 const props = defineProps({
-  connection: {
+  session: {
     type: Object,
-    default: null
-  },
-  editing: {
-    type: Boolean,
-    default: false
+    required: true
   }
 })
 
-const emit = defineEmits(['connected', 'cancelled'])
+defineEmits(['disconnect'])
 
-const terminalStore = useTerminalStore()
-const formRef = ref(null)
-const connecting = ref(false)
-const availablePorts = ref([])
+const terminalContainer = ref(null)
+const status = ref('connecting') // connecting, connected, disconnected
+const encoding = ref('utf8')
+const dtr = ref(false)
+const rts = ref(false)
 
-// 连接表单数据
-const connectionForm = reactive({
-  name: '',
-  port: '',
-  baudRate: 115200,
-  dataBits: 8,
-  stopBits: 1,
-  parity: 'none',
-  flowControl: 'none'
-})
+let term = null
+let fitAddon = null
 
-// 表单验证规则
-const rules = {
-  name: [
-    { required: true, message: '请输入连接名称', trigger: 'blur' }
-  ],
-  port: [
-    { required: true, message: '请选择串口', trigger: 'change' }
-  ],
-  baudRate: [
-    { required: true, message: '请选择波特率', trigger: 'change' }
-  ]
-}
+const setupTerminal = () => {
+  if (!terminalContainer.value) return
 
-// 刷新可用串口列表
-const refreshPorts = async () => {
-  try {
-    // 这里应该调用主进程的API获取串口列表
-    // 暂时模拟一些常见的串口
-    availablePorts.value = [
-      { path: 'COM1', manufacturer: '内置串口' },
-      { path: 'COM3', manufacturer: 'USB转串口' },
-      { path: '/dev/ttyUSB0', manufacturer: 'USB转串口' },
-      { path: '/dev/ttyACM0', manufacturer: 'Arduino' }
-    ]
-  } catch (error) {
-    ElMessage.error('获取串口列表失败')
-  }
-}
+  term = new Terminal({
+    cursorBlink: true,
+    fontFamily: 'Consolas, "Courier New", monospace',
+    fontSize: 14,
+    theme: {
+      background: '#1e1e1e',
+      foreground: '#d4d4d4'
+    },
+    convertEol: true // 自动将\n转为\r\n
+  })
+  fitAddon = new FitAddon()
+  term.loadAddon(fitAddon)
+  term.open(terminalContainer.value)
+  fitAddon.fit()
 
-// 监听编辑模式下的连接数据变化
-watch(() => props.connection, (newConnection) => {
-  if (newConnection && props.editing) {
-    Object.assign(connectionForm, newConnection)
-  }
-}, { immediate: true })
-
-// 处理连接
-const handleConnect = async () => {
-  try {
-    const valid = await formRef.value.validate()
-    if (!valid) return
-
-    connecting.value = true
-    
-    // 自动保存配置（如果不是编辑模式）
-    let savedConnection = connectionForm
-    if (!props.editing) {
-      savedConnection = terminalStore.addSerialConnection(connectionForm)
-      ElMessage.success('配置已保存并开始连接...')
-    } else {
-      // 编辑模式下更新现有连接
-      if (props.connection && props.connection.id) {
-        const index = terminalStore.serialConnections.findIndex(conn => conn.id === props.connection.id)
-        if (index !== -1) {
-          Object.assign(terminalStore.serialConnections[index], connectionForm)
-        }
-      }
-      ElMessage.success('配置已更新并开始连接...')
+  term.onData((data) => {
+    if (props.session.connectionId) {
+      window.serial.write(props.session.connectionId, data, encoding.value)
     }
-    
-    // 创建新标签页
-    const tab = terminalStore.createSerialTab(savedConnection)
-    
-    emit('connected', { tab, connection: savedConnection })
-    
-  } catch (error) {
-    ElMessage.error(`连接失败: ${error.message}`)
-  } finally {
-    connecting.value = false
+  })
+
+  window.addEventListener('resize', resizeTerminal)
+}
+
+const resizeTerminal = () => {
+  if (fitAddon) {
+    fitAddon.fit()
   }
 }
 
-// 取消操作
-const handleCancel = () => {
-  emit('cancelled')
+const handleDtrChange = async (value) => {
+  if (props.session.connectionId) {
+    const result = await window.serial.setControlLines(props.session.connectionId, { dtr: value })
+    if (!result.success) {
+      ElMessage.error(`设置DTR失败: ${result.error}`)
+      dtr.value = !value // 恢复原状
+    }
+  }
 }
 
-// 重置表单
-const resetForm = () => {
-  Object.assign(connectionForm, {
-    name: '',
-    port: '',
-    baudRate: 115200,
-    dataBits: 8,
-    stopBits: 1,
-    parity: 'none',
-    flowControl: 'none'
+const handleRtsChange = async (value) => {
+  if (props.session.connectionId) {
+    const result = await window.serial.setControlLines(props.session.connectionId, { rts: value })
+    if (!result.success) {
+      ElMessage.error(`设置RTS失败: ${result.error}`)
+      rts.value = !value // 恢复原状
+    }
+  }
+}
+
+// IPC 监听器
+const handleSerialData = (data) => {
+  if (term) {
+    term.write(data)
+  }
+}
+
+const handleSerialReady = () => {
+  status.value = 'connected'
+  nextTick(() => {
+    resizeTerminal()
   })
 }
 
+const handleSerialClose = () => {
+  status.value = 'disconnected'
+  if (term) {
+    term.writeln('\r\n\x1b[31m连接已断开\x1b[0m')
+  }
+}
+
+const handleSerialError = (error) => {
+  status.value = 'disconnected'
+  if (term) {
+    term.writeln(`\r\n\x1b[31m连接错误: ${error}\x1b[0m`)
+  }
+}
+
 onMounted(() => {
-  refreshPorts()
+  setupTerminal()
+
+  // 注册IPC监听
+  if (props.session.connectionId) {
+    serialService.on(props.session.connectionId, 'data', handleSerialData)
+    serialService.on(props.session.connectionId, 'ready', handleSerialReady)
+    serialService.on(props.session.connectionId, 'close', handleSerialClose)
+    serialService.on(props.session.connectionId, 'error', handleSerialError)
+
+    // 如果连接已经就绪，手动触发一次状态更新
+    const connectionInfo = serialService.getConnection(props.session.connectionId)
+    if (connectionInfo) {
+      status.value = 'connected'
+       nextTick(() => {
+        resizeTerminal()
+      })
+    }
+  }
 })
 
-defineExpose({
-  resetForm
+onUnmounted(() => {
+  // 移除IPC监听
+  if (props.session.connectionId) {
+    serialService.off(props.session.connectionId, 'data', handleSerialData)
+    serialService.off(props.session.connectionId, 'ready', handleSerialReady)
+    serialService.off(props.session.connectionId, 'close', handleSerialClose)
+    serialService.off(props.session.connectionId, 'error', handleSerialError)
+  }
+
+  window.removeEventListener('resize', resizeTerminal)
+
+  if (term) {
+    term.dispose()
+  }
 })
 </script>
 
 <style scoped>
-.serial-connection {
-  padding: 20px;
+.serial-connection-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #1e1e1e;
 }
 
-.el-form-item {
-  margin-bottom: 20px;
+.connection-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  background-color: #333;
+  color: #fff;
+  font-size: 12px;
+  gap: 16px;
 }
 
-.el-select {
-  width: 100%;
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: -8px; 
+  background-color: #f1c40f; /* connecting */
 }
+.status-indicator.connected {
+  background-color: #2ecc71; /* connected */
+}
+.status-indicator.disconnected {
+  background-color: #e74c3c; /* disconnected */
+}
+
+.connection-name {
+  flex-grow: 1;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-actions {
+  display: flex;
+}
+
+.terminal-container {
+  flex-grow: 1;
+  overflow: hidden;
+  padding: 5px;
+}
+
+:deep(.el-switch__label) {
+  color: #fff !important;
+}
+
 </style> 

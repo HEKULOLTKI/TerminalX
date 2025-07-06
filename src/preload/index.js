@@ -9,6 +9,8 @@ const api = {
     write: (connectionId, data) => ipcRenderer.invoke('ssh:write', connectionId, data),
     resize: (connectionId, cols, rows) => ipcRenderer.invoke('ssh:resize', connectionId, cols, rows),
     disconnect: (connectionId) => ipcRenderer.invoke('ssh:disconnect', connectionId),
+    startTunnel: (connectionId, tunnelConfig) => ipcRenderer.invoke('ssh:start-tunnel', connectionId, tunnelConfig),
+    stopTunnel: (tunnelId) => ipcRenderer.invoke('ssh:stop-tunnel', tunnelId),
     
     // 监听SSH事件
     onData: (callback) => ipcRenderer.on('ssh:data', callback),
@@ -18,6 +20,33 @@ const api = {
     
     // 移除监听器
     removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
+  },
+  serial: {
+    // 获取可用串口列表
+    listPorts: () => ipcRenderer.invoke('serial:list-ports'),
+    
+    // 测试串口连接
+    testConnection: (config) => ipcRenderer.invoke('serial:test-connection', config),
+    
+    // 连接到串口
+    connect: (config) => ipcRenderer.invoke('serial:connect', config),
+    
+    // 向串口写入数据
+    write: (connectionId, data, encoding) => ipcRenderer.invoke('serial:write', connectionId, data, encoding),
+    
+    // 断开串口连接
+    disconnect: (connectionId) => ipcRenderer.invoke('serial:disconnect', connectionId),
+    
+    // 监听串口事件
+    onData: (callback) => ipcRenderer.on('serial:data', callback),
+    onRawData: (callback) => ipcRenderer.on('serial:raw-data', callback),
+    onReady: (callback) => ipcRenderer.on('serial:ready', callback),
+    onError: (callback) => ipcRenderer.on('serial:error', callback),
+    onClose: (callback) => ipcRenderer.on('serial:close', callback),
+    
+    // 移除监听器
+    removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
+    setControlLines: (connectionId, options) => ipcRenderer.invoke('serial:set-control-lines', connectionId, options)
   }
 }
 

@@ -5,6 +5,7 @@ class SSHMainService {
   constructor() {
     this.connections = new Map()
     this.sftpSessions = new Map()
+    this.tunnels = new Map() // 用于存储活动的隧道
     this.setupIPC()
   }
 
@@ -101,6 +102,20 @@ class SSHMainService {
 
     ipcMain.handle('sftp:close-session', async (event, sftpId) => {
       return this.closeSFTPSession(sftpId)
+    })
+
+    // SSH隧道相关功能
+    ipcMain.handle('ssh:start-tunnel', async (event, connectionId, tunnelConfig) => {
+      try {
+        const tunnelId = await this.startTunnel(connectionId, tunnelConfig, event.sender)
+        return { success: true, tunnelId }
+      } catch (error) {
+        return { success: false, error: error.message }
+      }
+    })
+
+    ipcMain.handle('ssh:stop-tunnel', async (event, tunnelId) => {
+      return this.stopTunnel(tunnelId)
     })
   }
 
@@ -252,7 +267,85 @@ class SSHMainService {
     }
     return false
   }
+
+  // --- SSH 隧道方法 ---
+
+  async startTunnel(connectionId, tunnelConfig, webContents) {
+    const connInfo = this.connections.get(connectionId)
+    if (!connInfo || !connInfo.connection) {
+      throw new Error('SSH连接不存在或未准备好')
+    }
+
+    const { connection } = connInfo
+    const { localPort, remoteHost, remotePort } = tunnelConfig
+    const tunnelId = `tunnel_${connectionId}_${localPort}_${remoteHost}_${remotePort}`
+
+    return new Promise((resolve, reject) => {
+      const server = require('net').createServer((sock) => {
+        connection.forwardOut('127.0.0.1', 0, remoteHost, remotePort, (err, stream) => {
+          if (err) {
+            console.error('隧道转发错误:', err)
+            sock.end()
+            return
+          }
+          
+          sock.pipe(stream)
+          stream.pipe(sock)
+
+          stream.on('close', () => {
+            console.log(`隧道 stream for ${tunnelId} 已关闭`)
+            sock.end()
+          })
+
+          sock.on('close', () => {
+             console.log(`客户端 socket for ${tunnelId} 已关闭`)
+            stream.close()
+          })
+
+           sock.on('error', (socketErr) => {
+            console.error(`客户端 socket for ${tunnelId} 错误:`, socketErr);
+            stream.close();
+          });
+
+          stream.on('error', (streamErr) => {
+            console.error(`隧道 stream for ${tunnelId} 错误:`, streamErr);
+            sock.end();
+          });
+        })
+      })
+
+      server.listen(localPort, '127.0.0.1', () => {
+        console.log(`隧道 ${tunnelId} 已在本地端口 ${localPort} 上启动`)
+        this.tunnels.set(tunnelId, server)
+        webContents.send('ssh:tunnel-started', tunnelId, tunnelConfig)
+        resolve(tunnelId)
+      })
+
+      server.on('error', (err) => {
+        console.error(`隧道服务器错误 on port ${localPort}:`, err)
+        reject(new Error(`无法在本地端口 ${localPort} 上启动隧道: ${err.message}`))
+      })
+    })
+  }
+
+  stopTunnel(tunnelId) {
+    const server = this.tunnels.get(tunnelId)
+    if (server) {
+      return new Promise((resolve) => {
+        server.close((err) => {
+          if (err) {
+            console.error(`关闭隧道 ${tunnelId} 时出错:`, err)
+            resolve({ success: false, error: err.message })
+          } else {
+            console.log(`隧道 ${tunnelId} 已关闭`)
+            this.tunnels.delete(tunnelId)
+            resolve({ success: true })
+          }
+        })
+      })
+    }
+    return { success: false, error: '隧道不存在' }
+  }
 }
 
-// 创建单例并导出
-export const sshMainService = new SSHMainService() 
+export default SSHMainService 

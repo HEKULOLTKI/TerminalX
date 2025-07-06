@@ -322,7 +322,7 @@ renderer.listitem = function(text) {
 
 // 标题渲染（添加锚点）
 renderer.heading = function(text, level) {
-  const escapedText = text.toLowerCase().replace(/[^\w]+/g, '-')
+  const escapedText = String(text || '').toLowerCase().replace(/[^\\w-]+/g, '-')
   return `<h${level} class="markdown-heading markdown-h${level}" id="heading-${escapedText}">${text}</h${level}>`
 }
 

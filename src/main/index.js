@@ -1,8 +1,15 @@
+// 修正 Windows 终端中的中文乱码问题
+if (process.platform === 'win32') {
+  process.stdout.setDefaultEncoding('utf8');
+  process.stderr.setDefaultEncoding('utf8');
+}
+
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import './ssh-service.js' // 导入SSH服务
+import SSHMainService from './ssh-service.js' // 导入SSH服务类
+import SerialMainService from './serial-service.js' // 导入串口服务类
 
 function createWindow() {
   // Create the browser window.
@@ -76,6 +83,12 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // 初始化服务
+  const sshService = new SSHMainService()
+  const serialService = new SerialMainService()
+  global.sshService = sshService
+  global.serialService = serialService
+
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
 
@@ -127,6 +140,17 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
+  }
+})
+
+// 应用退出时清理连接
+app.on('before-quit', () => {
+  if (global.sshService) {
+    // 可以在这里添加sshService的清理逻辑
+  }
+  // 清理所有串口连接
+  if (global.serialService) {
+    global.serialService.cleanup()
   }
 })
 

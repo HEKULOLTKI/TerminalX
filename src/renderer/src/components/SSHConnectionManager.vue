@@ -136,6 +136,7 @@
     >
       <SSHConnection 
         ref="newConnectionRef"
+        :session="{ name: '新建连接' }"
         @connected="handleConnectionSuccess"
         @cancelled="showNewConnection = false"
       />
@@ -150,7 +151,7 @@
     >
       <SSHConnection 
         ref="editConnectionRef"
-        :connection="editingConnection"
+        :session="editingConnection"
         :editing="true"
         @connected="handleConnectionSuccess"
         @cancelled="showEditConnection = false"
