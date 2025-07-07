@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import { serialService } from '../services/serial'
+import { sshService } from '../services/ssh'
 
 export const useTerminalStore = defineStore('terminal', () => {
   // 当前活跃的标签页
@@ -72,8 +73,19 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
   })
 
+  const addTab = async (tabData) => {
+    if (tabData.type === 'ssh') {
+      return await createSshTab(tabData.connection)
+    } else if (tabData.type === 'serial') {
+      return await createSerialTab(tabData.connection)
+    } else {
+      console.error('Unsupported tab type:', tabData.type)
+      return null
+    }
+  }
+
   // 创建新标签页
-  const createTab = (connection) => {
+  const createSshTab = async (connection) => {
     // 要求必须传入 connection 对象
     if (!connection) {
       console.error('创建标签页时必须提供连接信息')
@@ -83,14 +95,77 @@ export const useTerminalStore = defineStore('terminal', () => {
     const id = uuidv4()
     const tab = {
       id,
-      title: `${connection.username}@${connection.host}`, // 直接使用连接信息
+      title: connection.username ? `${connection.username}@${connection.host}` : connection.host, // 根据是否有用户名设置标题
       connection,
       isConnected: false,
       terminal: null,
-      ssh: null
+      ssh: null,
+      connectionStatus: 'connecting' // 添加连接状态
     }
     tabs.value.push(tab)
     activeTabId.value = id
+    
+    try {
+      const sshConnection = await sshService.connect(
+        connection,
+        (data) => { // onData
+          const currentTab = tabs.value.find(t => t.id === id)
+          if (currentTab && currentTab.terminal) {
+            currentTab.terminal.write(data)
+          }
+        },
+        () => { // onReady
+          const currentTab = tabs.value.find(t => t.id === id)
+          if (currentTab) {
+            currentTab.isConnected = true
+            currentTab.connectionStatus = 'connected'
+            if (currentTab.terminal) {
+              currentTab.terminal.writeln('\r\n\x1b[32mSSH connection established.\x1b[0m')
+            }
+          }
+        },
+        (error) => { // onError
+          const currentTab = tabs.value.find(t => t.id === id)
+          if (currentTab) {
+            currentTab.isConnected = false
+            currentTab.connectionStatus = 'error'
+            if (currentTab.terminal) {
+              currentTab.terminal.writeln(`\r\n\x1b[31mSSH Error: ${error.message}\x1b[0m`)
+            }
+          }
+        },
+        () => { // onClose
+          const currentTab = tabs.value.find(t => t.id === id)
+          if (currentTab) {
+            currentTab.isConnected = false
+            currentTab.connectionStatus = 'disconnected'
+            if (currentTab.terminal) {
+              currentTab.terminal.writeln('\r\n\x1b[31mSSH connection closed.\x1b[0m')
+            }
+          }
+        }
+      )
+      
+      const currentTab = tabs.value.find(t => t.id === id)
+      if (currentTab) {
+        currentTab.ssh = sshConnection
+      }
+    } catch (error) {
+      console.error('SSH连接失败:', error)
+      const currentTab = tabs.value.find(t => t.id === id)
+      if (currentTab) {
+        currentTab.isConnected = false
+        currentTab.connectionStatus = 'failed'
+        // 延迟执行，确保terminal实例已创建
+        setTimeout(() => {
+          if (currentTab.terminal) {
+            currentTab.terminal.writeln(`\r\n\x1b[31m连接失败: ${error.message}\x1b[0m`)
+            currentTab.terminal.writeln('\r\n\x1b[33m请检查网络连接和认证信息\x1b[0m')
+          }
+        }, 100)
+      }
+    }
+
     return tab
   }
 
@@ -101,7 +176,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       const tab = tabs.value[index]
       // 断开SSH连接
       if (tab.ssh) {
-        tab.ssh.end()
+        sshService.disconnect(tab.ssh.connectionId)
       }
       // 断开串口连接
       if (tab.connection && tab.connection.type === 'serial' && tab.connectionId) {
@@ -130,22 +205,62 @@ export const useTerminalStore = defineStore('terminal', () => {
   }
 
   // 添加SSH连接配置
-  const addConnection = (config) => {
+  const addSshConnection = (config) => {
+    // 创建一个只包含基本属性的简化连接对象
+    const safeProps = [
+      'host', 'port', 'username', 'password', 'privateKey', 'passphrase',
+      'authType', 'name', 'keepaliveInterval', 'readyTimeout', 'timeout'
+    ];
+    
+    const safeConfig = {};
+    for (const prop of safeProps) {
+      if (config[prop] !== undefined) {
+        safeConfig[prop] = config[prop];
+      }
+    }
+    
     const connection = {
       id: uuidv4(),
-      ...config,
-      createdAt: new Date()
+      ...safeConfig,
+      createdAt: new Date().toISOString() // 使用ISO字符串而不是Date对象
     }
     connections.value.push(connection)
     return connection
   }
 
   // 删除连接配置
-  const removeConnection = (connectionId) => {
+  const removeSshConnection = (connectionId) => {
     const index = connections.value.findIndex(conn => conn.id === connectionId)
     if (index !== -1) {
       connections.value.splice(index, 1)
     }
+  }
+  
+  // 更新SSH连接配置
+  const updateSshConnection = (config) => {
+    // 创建一个只包含基本属性的简化连接对象
+    const safeProps = [
+      'host', 'port', 'username', 'password', 'privateKey', 'passphrase',
+      'authType', 'name', 'keepaliveInterval', 'readyTimeout', 'timeout'
+    ];
+    
+    const safeConfig = {};
+    for (const prop of safeProps) {
+      if (config[prop] !== undefined) {
+        safeConfig[prop] = config[prop];
+      }
+    }
+    
+    const index = connections.value.findIndex(conn => conn.id === config.id)
+    if (index !== -1) {
+      // 保留ID和创建日期，更新其他属性
+      connections.value[index] = {
+        ...connections.value[index],
+        ...safeConfig
+      }
+    }
+    
+    return connections.value[index]
   }
 
   // 创建串口标签页
@@ -153,7 +268,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     const id = uuidv4()
     const tab = {
       id,
-      title: connection ? `${connection.name} (${connection.port})` : '串口终端',
+      title: connection ? `${connection.name} (${connection.path})` : '串口终端',
       connection: {
         ...connection,
         type: 'serial'
@@ -305,21 +420,23 @@ export const useTerminalStore = defineStore('terminal', () => {
     themes,
     showSidebar,
     sidebarMode,
-    createTab,
-    createSerialTab,
+    addTab,
+    createSshTab,
     closeTab,
     switchTab,
-    addConnection,
-    removeConnection,
+    addSshConnection,
+    removeSshConnection,
+    updateSshConnection,
+    createSerialTab,
     addSerialConnection,
-    removeSerialConnection,
     updateSerialConnection,
+    removeSerialConnection,
     setTheme,
     getActiveTab,
+    updateTab,
     getCurrentTheme,
     toggleSidebar,
     setSidebarMode,
     hideSidebar,
-    updateTab
   }
 }) 

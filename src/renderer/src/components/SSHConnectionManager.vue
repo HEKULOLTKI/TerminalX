@@ -134,11 +134,9 @@
       width="500px"
       :close-on-click-modal="false"
     >
-      <SSHConnection 
-        ref="newConnectionRef"
-        :session="{ name: '新建连接' }"
-        @connected="handleConnectionSuccess"
-        @cancelled="showNewConnection = false"
+      <SSHConnectionForm
+        @connect="handleSaveConnection"
+        @close="showNewConnection = false"
       />
     </el-dialog>
 
@@ -149,12 +147,11 @@
       width="500px"
       :close-on-click-modal="false"
     >
-      <SSHConnection 
-        ref="editConnectionRef"
-        :session="editingConnection"
-        :editing="true"
-        @connected="handleConnectionSuccess"
-        @cancelled="showEditConnection = false"
+      <SSHConnectionForm 
+        v-if="editingConnection"
+        :initial-data="editingConnection"
+        @connect="handleSaveConnection"
+        @close="showEditConnection = false"
       />
     </el-dialog>
   </div>
@@ -178,7 +175,7 @@ import {
   Refresh
 } from '@element-plus/icons-vue'
 import { useTerminalStore } from '../stores/terminal'
-import SSHConnection from './SSHConnection.vue'
+import SSHConnectionForm from './SSHConnectionForm.vue'
 
 const terminalStore = useTerminalStore()
 
@@ -190,6 +187,48 @@ const showEditConnection = ref(false)
 const editingConnection = ref(null)
 const newConnectionRef = ref(null)
 const editConnectionRef = ref(null)
+
+const handleSaveConnection = async (connectionData) => {
+  // 确保连接数据是可序列化的
+  const safeProps = [
+    'host', 'port', 'username', 'password', 'privateKey', 'passphrase',
+    'authType', 'name', 'keepaliveInterval', 'readyTimeout', 'timeout'
+  ];
+  
+  const safeConnection = {};
+  for (const prop of safeProps) {
+    if (connectionData[prop] !== undefined) {
+      safeConnection[prop] = connectionData[prop];
+    }
+  }
+
+  let savedConnection;
+  if (editingConnection.value) {
+    savedConnection = { ...editingConnection.value, ...safeConnection };
+    terminalStore.updateSshConnection(savedConnection)
+    ElMessage.success('连接已更新')
+  } else {
+    savedConnection = terminalStore.addSshConnection(safeConnection)
+    ElMessage.success('连接已保存')
+  }
+  
+  // 连接到主机
+  try {
+    await terminalStore.addTab({
+      type: 'ssh',
+      label: savedConnection.name,
+      connection: savedConnection,
+      active: true
+    });
+    
+    showNewConnection.value = false
+    showEditConnection.value = false
+    editingConnection.value = null
+  } catch (error) {
+    console.error('连接失败:', error)
+    ElMessage.error(`连接失败: ${error.message}`)
+  }
+}
 
 // 检查连接是否处于活跃状态
 const isConnectionActive = (connection) => {
@@ -203,87 +242,67 @@ const isConnectionActive = (connection) => {
 }
 
 // 连接到主机
-const connectToHost = (connection) => {
-  terminalStore.createTab(connection)
-  ElMessage.success(`正在连接到 ${connection.host}...`)
-}
-
-// 编辑连接
-const editConnection = (connection) => {
-  editingConnection.value = { ...connection }
-  showEditConnection.value = true
-}
-
-// 复制连接
-const duplicateConnection = (connection) => {
-  const newConnection = {
-    ...connection,
-    name: `${connection.name} - 副本`,
-    id: undefined // 让store生成新ID
+const connectToHost = async (connection) => {
+  try {
+    await terminalStore.addTab({
+      type: 'ssh',
+      label: connection.name,
+      connection: connection,
+      active: true
+    })
+  } catch (error) {
+    console.error('连接失败:', error)
+    ElMessage.error(`连接失败: ${error.message}`)
   }
-  delete newConnection.id
-  terminalStore.addConnection(newConnection)
-  ElMessage.success('连接已复制')
 }
+
+const editConnection = (connection) => {
+  editingConnection.value = connection;
+  showEditConnection.value = true;
+};
+
+const duplicateConnection = (c) => {
+  const newConn = { ...c, id: Date.now().toString(), name: `${c.name} (copy)` };
+  terminalStore.addSshConnection(newConn);
+  ElMessage.success('Connection duplicated.');
+};
 
 // 删除连接
-const deleteConnection = async (connection) => {
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除连接 "${connection.name}" 吗？`,
-      '确认删除',
-      {
-        confirmButtonText: '删除',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
-    
-    terminalStore.removeConnection(connection.id)
-    ElMessage.success('连接已删除')
-  } catch {
-    // 用户取消
-  }
+const deleteConnection = (connection) => {
+  ElMessageBox.confirm(`Are you sure you want to delete "${connection.name}"?`, 'Warning', {
+    confirmButtonText: 'OK',
+    cancelButtonText: 'Cancel',
+    type: 'warning'
+  })
+    .then(() => {
+      terminalStore.removeSshConnection(connection.id)
+      ElMessage({
+        type: 'success',
+        message: 'Delete completed'
+      })
+    })
+    .catch(() => {
+      /* no-op */
+    })
 }
 
-// 处理连接成功
-const handleConnectionSuccess = (data) => {
+const handleConnectionSuccess = () => {
   showNewConnection.value = false
   showEditConnection.value = false
-  newConnectionRef.value?.resetForm()
-  editConnectionRef.value?.resetForm()
+  ElMessage.success('连接已保存')
 }
 
-// 导入连接
-const importConnections = () => {
-  // TODO: 实现导入连接功能
-  ElMessage.info('导入功能开发中...')
-}
-
-// 导出连接
-const exportConnections = () => {
-  if (terminalStore.connections.length === 0) {
-    ElMessage.warning('没有可导出的SSH连接')
-    return
-  }
-  
-  const dataStr = JSON.stringify(terminalStore.connections, null, 2)
-  const blob = new Blob([dataStr], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'ssh-connections.json'
-  link.click()
-  
-  URL.revokeObjectURL(url)
-  ElMessage.success('SSH连接配置已导出')
-}
-
-// 刷新连接状态
 const refreshConnections = () => {
-  ElMessage.info('正在刷新连接状态...')
-  // 这里可以添加刷新连接状态的逻辑
+  // Mock refresh
+  ElMessage.info('刷新状态...')
+}
+
+const importConnections = () => {
+  ElMessage.info('导入功能待开发...')
+}
+
+const exportConnections = () => {
+  ElMessage.info('导出功能待开发...')
 }
 </script>
 

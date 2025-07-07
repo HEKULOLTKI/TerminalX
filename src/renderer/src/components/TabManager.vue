@@ -70,7 +70,7 @@
                   <div class="detail-row">
                     <span class="detail-label">端口:</span>
                     <span class="detail-value">
-                      {{ tab.connection.type === 'serial' ? tab.connection.port : tab.connection.port || 22 }}
+                      {{ tab.connection.type === 'serial' ? tab.connection.path : tab.connection.port || 22 }}
                     </span>
                   </div>
                   <div class="detail-row" v-if="tab.connection.type === 'serial'">
@@ -293,7 +293,7 @@ const switchToNextTab = () => {
 
 
 const closeTab = (tabId) => {
-  terminalStore.removeTab(tabId)
+  terminalStore.closeTab(tabId)
 }
 
 const getStatusText = (tab) => {

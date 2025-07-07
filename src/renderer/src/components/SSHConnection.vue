@@ -1,208 +1,113 @@
 <template>
-  <div class="ssh-connection-wrapper">
-    <div class="connection-header">
-      <span class="status-indicator" :class="status"></span>
-      <span class="connection-name">{{ session.name }}</span>
-      <div class="header-actions">
-        <el-tooltip content="隧道管理" placement="top">
-          <el-button
-            type="primary"
-            :icon="Share"
-            circle
-            size="small"
-            @click="showTunnelManager = true"
-          />
-        </el-tooltip>
-        <el-button
-          type="danger"
-          :icon="Close"
-          circle
-          size="small"
-          @click="$emit('disconnect')"
-        />
+  <div class="ssh-connection-form">
+    <form @submit.prevent="connect">
+      <div class="form-group">
+        <label for="name">连接名称</label>
+        <input type="text" id="name" v-model="connection.name" placeholder="例如：我的服务器" required>
       </div>
-    </div>
-    <div class="terminal-container" ref="terminalContainer"></div>
-
-    <!-- 隧道管理器 -->
-    <SSHTunnelManager
-      v-if="session.connectionId"
-      :visible="showTunnelManager"
-      :connection-id="session.connectionId"
-      @update:visible="showTunnelManager = $event"
-    />
+      <div class="form-group">
+        <label for="host">主机</label>
+        <input type="text" id="host" v-model="connection.host" placeholder="例如：192.168.1.100" required>
+      </div>
+      <div class="form-group">
+        <label for="port">端口</label>
+        <input type="number" id="port" v-model="connection.port" placeholder="默认 22" required>
+      </div>
+      <div class="form-group">
+        <label for="username">用户名</label>
+        <input type="text" id="username" v-model="connection.username" placeholder="例如：root" required>
+      </div>
+      <div class="form-group">
+        <label for="password">密码</label>
+        <input type="password" id="password" v-model="connection.password" placeholder="请输入密码">
+      </div>
+      <div class="form-actions">
+        <button type="button" @click="$emit('close')">取消</button>
+        <button type="submit" class="primary">连接</button>
+      </div>
+    </form>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import '@xterm/xterm/css/xterm.css'
-import { Close, Share } from '@element-plus/icons-vue'
-import SSHTunnelManager from './SSHTunnelManager.vue'
+import { ref } from 'vue'
 
-const props = defineProps({
-  session: {
-    type: Object,
-    required: true
-  }
+const emit = defineEmits(['connect', 'close'])
+
+const connection = ref({
+  name: '',
+  host: '',
+  port: 22,
+  username: '',
+  password: '',
 })
 
-defineEmits(['disconnect'])
-
-const terminalContainer = ref(null)
-const status = ref('connecting') // connecting, connected, disconnected
-const showTunnelManager = ref(false)
-
-let term = null
-let fitAddon = null
-
-const setupTerminal = () => {
-  if (!terminalContainer.value) return
-
-  term = new Terminal({
-    cursorBlink: true,
-    fontFamily: 'Consolas, "Courier New", monospace',
-    fontSize: 14,
-    theme: {
-      background: '#1e1e1e',
-      foreground: '#d4d4d4'
-    }
-  })
-  fitAddon = new FitAddon()
-  term.loadAddon(fitAddon)
-  term.open(terminalContainer.value)
-  fitAddon.fit()
-
-  term.onData((data) => {
-    if (props.session.connectionId) {
-      window.api.ssh.write(props.session.connectionId, data)
-    }
-  })
-
-  // 监听窗口大小变化
-  window.addEventListener('resize', resizeTerminal)
+const connect = () => {
+  // 在这里可以添加表单验证逻辑
+  emit('connect', { ...connection.value })
 }
-
-const resizeTerminal = () => {
-  if (fitAddon && term) {
-    fitAddon.fit()
-    if (props.session.connectionId) {
-      window.api.ssh.resize(props.session.connectionId, term.cols, term.rows)
-    }
-  }
-}
-
-// IPC 监听器
-const handleSshData = (connectionId, data) => {
-  if (connectionId === props.session.connectionId && term) {
-    term.write(data)
-  }
-}
-
-const handleSshReady = (connectionId) => {
-  if (connectionId === props.session.connectionId) {
-    status.value = 'connected'
-    nextTick(() => {
-      resizeTerminal()
-    })
-  }
-}
-
-const handleSshClose = (connectionId) => {
-  if (connectionId === props.session.connectionId) {
-    status.value = 'disconnected'
-    if (term) {
-      term.writeln('\r\n\x1b[31m连接已断开\x1b[0m')
-    }
-  }
-}
-
-const handleSshError = (connectionId, error) => {
-  if (connectionId === props.session.connectionId) {
-    status.value = 'disconnected'
-    if (term) {
-      term.writeln(`\r\n\x1b[31m连接错误: ${error}\x1b[0m`)
-    }
-  }
-}
-
-onMounted(() => {
-  setupTerminal()
-
-  // 注册IPC监听
-  window.api.ssh.onData((event, connectionId, data) => handleSshData(connectionId, data))
-  window.api.ssh.onReady((event, connectionId) => handleSshReady(connectionId))
-  window.api.ssh.onClose((event, connectionId) => handleSshClose(connectionId))
-  window.api.ssh.onError((event, connectionId, error) => handleSshError(connectionId, error))
-
-  if (props.session.connectionId) {
-    status.value = 'connected'
-     nextTick(() => {
-      resizeTerminal()
-    })
-  }
-})
-
-onUnmounted(() => {
-  // 移除IPC监听
-  window.api.ssh.removeAllListeners('ssh:data')
-  window.api.ssh.removeAllListeners('ssh:ready')
-  window.api.ssh.removeAllListeners('ssh:close')
-  window.api.ssh.removeAllListeners('ssh:error')
-
-  window.removeEventListener('resize', resizeTerminal)
-
-  if (term) {
-    term.dispose()
-  }
-})
 </script>
 
 <style scoped>
-.ssh-connection-wrapper {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background-color: #1e1e1e;
+.ssh-connection-form {
+  padding: 20px;
+  background-color: #2d2d2d;
+  color: #f0f0f0;
+  border-radius: 8px;
 }
 
-.connection-header {
-  display: flex;
-  align-items: center;
-  padding: 4px 8px;
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+  color: #ccc;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #444;
+  border-radius: 4px;
   background-color: #333;
-  color: #fff;
-  font-size: 12px;
+  color: #f0f0f0;
+  box-sizing: border-box; /* 保证padding不会影响width */
 }
 
-.status-indicator {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  margin-right: 8px;
-  background-color: #f1c40f; /* connecting */
-}
-.status-indicator.connected {
-  background-color: #2ecc71; /* connected */
-}
-.status-indicator.disconnected {
-  background-color: #e74c3c; /* disconnected */
+.form-group input::placeholder {
+  color: #888;
 }
 
-.connection-name {
-  flex-grow: 1;
-}
-
-.header-actions {
+.form-actions {
   display: flex;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
 }
 
-.terminal-container {
-  flex-grow: 1;
-  overflow: hidden;
-  padding: 5px;
+button {
+  padding: 10px 20px;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background-color: #444;
+  color: #f0f0f0;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+button:hover {
+  background-color: #555;
+}
+
+button.primary {
+  background-color: #007bff;
+  border-color: #007bff;
+}
+
+button.primary:hover {
+  background-color: #0056b3;
 }
 </style> 

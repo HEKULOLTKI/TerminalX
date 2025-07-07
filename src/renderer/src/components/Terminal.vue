@@ -142,56 +142,99 @@ const initTerminal = () => {
 // 初始化SSH连接
 const initSSHConnection = async (connection) => {
   try {
-    terminal.writeln(`正在连接到 ${connection.username}@${connection.host}:${connection.port}...`)
+    // 确保连接对象有认证类型并且可序列化
+    if (!connection.authType) {
+      connection.authType = 'password';
+    }
+
+    // 创建一个只包含必要属性的简化连接对象
+    const safeProps = [
+      'host', 'port', 'username', 'password', 'privateKey', 'passphrase',
+      'authType', 'name', 'keepaliveInterval', 'readyTimeout', 'timeout'
+    ];
+    
+    const safeConnection = {};
+    for (const prop of safeProps) {
+      if (connection[prop] !== undefined) {
+        safeConnection[prop] = connection[prop];
+      }
+    }
+    
+    terminal.writeln(`正在连接到 ${safeConnection.username}@${safeConnection.host}:${safeConnection.port}...`)
     
     const result = await sshService.connect(
-      connection,
+      safeConnection,
       // onData - 接收SSH输出
       (data) => {
-        terminal.write(data)
+        try {
+          terminal.write(data)
+        } catch (err) {
+          console.error('写入终端数据失败:', err)
+        }
       },
       // onReady - 连接就绪
-      (stream) => {
-        terminal.writeln('连接成功!')
+      () => {
+        terminal.writeln('\r\n\x1b[32mSSH连接已建立。\x1b[0m')
+        if (currentTab) {
+          currentTab.isConnected = true
+          currentTab.connectionStatus = 'connected'
+        }
       },
       // onError - 连接错误
       (error) => {
-        terminal.writeln(`\r\n连接错误: ${error.message}`)
-        terminal.writeln('请检查连接配置并重试。')
+        console.error('SSH连接错误:', error)
+        terminal.writeln(`\r\n\x1b[31m连接错误: ${error.message || '未知错误'}\x1b[0m`)
+        terminal.writeln('\x1b[33m请检查网络连接和认证信息。\x1b[0m')
         if (currentTab) {
           currentTab.isConnected = false
+          currentTab.connectionStatus = 'error'
         }
       },
       // onClose - 连接关闭
       () => {
-        terminal.writeln('\r\n连接已断开')
+        terminal.writeln('\r\n\x1b[31m连接已断开\x1b[0m')
         sshConnectionId = null
         if (currentTab) {
           currentTab.isConnected = false
           currentTab.ssh = null
+          currentTab.connectionStatus = 'disconnected'
         }
       }
     )
     
     // 连接成功后设置连接ID和状态
-    sshConnectionId = result.connectionId
-    if (currentTab) {
-      currentTab.isConnected = true
-      currentTab.ssh = result.connection
+    if (result && result.connectionId) {
+      sshConnectionId = result.connectionId
+      if (currentTab) {
+        currentTab.isConnected = true
+        currentTab.ssh = { connectionId: result.connectionId }
+        currentTab.connectionStatus = 'connecting'
+      }
+      
+      // 处理用户输入
+      terminal.onData((data) => {
+        if (sshConnectionId) {
+          try {
+            sshService.write(sshConnectionId, data)
+              .catch(err => {
+                console.error('写入SSH数据失败:', err)
+              })
+          } catch (err) {
+            console.error('SSH写入错误:', err)
+          }
+        }
+      })
+    } else {
+      throw new Error('未能获取有效的连接ID')
     }
     
-    // 处理用户输入
-    terminal.onData((data) => {
-      if (sshConnectionId) {
-        sshService.write(sshConnectionId, data)
-      }
-    })
-    
   } catch (error) {
-    terminal.writeln(`连接失败: ${error.message}`)
-    terminal.writeln('请检查网络连接和认证信息。')
+    console.error('SSH连接异常:', error)
+    terminal.writeln(`\r\n\x1b[31m连接失败: ${error.message || '未知错误'}\x1b[0m`)
+    terminal.writeln('\x1b[33m请检查网络连接和认证信息。\x1b[0m')
     if (currentTab) {
       currentTab.isConnected = false
+      currentTab.connectionStatus = 'failed'
     }
   }
 }
@@ -204,7 +247,7 @@ const initSerialConnection = () => {
   if (currentTab.isConnected) {
     terminal.writeln('\r\n\x1b[32m已连接到串口\x1b[0m')
   } else {
-    terminal.writeln(`正在连接到串口 ${currentTab.connection.port}...`)
+    terminal.writeln(`正在连接到串口 ${currentTab.connection.path}...`)
     terminal.writeln(`配置: ${currentTab.connection.baudRate} bps, ${currentTab.connection.dataBits}${currentTab.connection.parity.charAt(0).toUpperCase()}${currentTab.connection.stopBits}`)
   }
 

@@ -61,7 +61,7 @@
               <div class="connection-details">
                 <div class="connection-info">
                   <el-icon class="info-icon"><Monitor /></el-icon>
-                  <span>{{ connection.port }}</span>
+                  <span>{{ connection.path }}</span>
                 </div>
                 <div class="connection-info">
                   <el-icon class="info-icon"><Timer /></el-icon>
@@ -135,9 +135,8 @@
       :close-on-click-modal="false"
     >
       <SerialConnectionForm
-        :session="{}"
-        @saved="handleSave"
-        @cancelled="showNewConnection = false"
+        @connect="handleConnectionSave"
+        @close="showNewConnection = false"
       />
     </el-dialog>
 
@@ -149,10 +148,11 @@
       :close-on-click-modal="false"
     >
       <SerialConnectionForm
-        :session="editingConnection"
+        v-if="showEditConnection"
+        :initial-data="editingConnection"
         :editing="true"
-        @saved="handleSave"
-        @cancelled="showEditConnection = false"
+        @connect="handleConnectionSave"
+        @close="showEditConnection = false"
       />
     </el-dialog>
   </div>
@@ -187,25 +187,62 @@ const showEditConnection = ref(false)
 // 编辑连接相关
 const editingConnection = ref(null)
 
+// 处理连接成功
+const handleConnectionSave = (connectionData) => {
+  // 确保连接对象有 path 属性用于显示（与 port 属性保持一致）
+  const processedData = {
+    ...connectionData,
+    path: connectionData.port // 将 port 复制到 path 用于显示
+  };
+  
+  let savedConnection;
+  if (editingConnection.value) {
+    // 更新现有连接
+    savedConnection = { ...processedData, id: editingConnection.value.id };
+    terminalStore.updateSerialConnection(savedConnection)
+    ElMessage.success('连接已更新')
+  } else {
+    // 添加新连接
+    savedConnection = terminalStore.addSerialConnection(processedData)
+    ElMessage.success('连接已保存')
+  }
+
+  // 立即连接
+  terminalStore.addTab({
+    type: 'serial',
+    connection: savedConnection
+  });
+
+  showNewConnection.value = false
+  showEditConnection.value = false
+  editingConnection.value = null
+}
+
 // 检查连接是否处于活跃状态
 const isConnectionActive = (connection) => {
   return terminalStore.tabs.some(tab => 
     tab.connection && 
     tab.connection.type === 'serial' &&
-    tab.connection.port === connection.port && 
+    tab.connection.path === connection.path && 
     tab.isConnected
   )
 }
 
 // 连接到串口
 const connectToSerial = (connection) => {
-  terminalStore.createSerialTab(connection)
-  ElMessage.success(`正在连接到串口 ${connection.port}...`)
+  terminalStore.addTab({
+    type: 'serial',
+    connection: connection
+  })
+  ElMessage.success(`正在连接到串口 ${connection.path}...`)
 }
 
 // 编辑连接
 const editConnection = (connection) => {
-  editingConnection.value = { ...connection }
+  editingConnection.value = { 
+    ...connection,
+    port: connection.path || connection.port // 确保有 port 属性用于表单
+  }
   showEditConnection.value = true
 }
 
@@ -238,12 +275,6 @@ const deleteConnection = async (connection) => {
   } catch {
     // 用户取消删除
   }
-}
-
-// 处理连接成功
-const handleSave = () => {
-  showNewConnection.value = false
-  showEditConnection.value = false
 }
 
 // 刷新串口列表
@@ -280,106 +311,112 @@ const exportConnections = () => {
 
 <style scoped>
 .serial-connection-manager {
-  padding: 16px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #f5f7fa;
 }
 
 .toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  padding: 12px 20px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e4e7ed;
 }
 
 .toolbar-actions {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
 }
 
 .connection-list {
-  margin-top: 16px;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 40px 20px;
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 8px;
 }
 
 .connections-list {
-  /* No specific grid or flex layout here, as it's now a list */
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 16px;
+  padding: 12px;
+}
+
+.empty-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: calc(100% - 60px); 
 }
 
 .connection-row {
-  display: flex;
-  align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--el-border-color);
-  background: var(--el-bg-color);
-  transition: all 0.2s;
-}
-
-.connection-row:last-child {
-  border-bottom: none;
+  background-color: #fff;
+  border-radius: 8px;
+  border: 1px solid #e4e7ed;
+  transition: box-shadow 0.3s;
+  overflow: hidden;
 }
 
 .connection-row:hover {
-  background: var(--el-fill-color-light);
-  border-color: var(--el-color-primary);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 
 .connection-main {
+  padding: 18px;
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  flex: 1;
 }
 
 .connection-left {
-  flex: 1;
-  margin-right: 16px;
-}
-
-.connection-right {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .connection-name {
-  font-weight: 600;
   font-size: 16px;
-  color: var(--el-text-color-primary);
-  margin-bottom: 4px;
+  font-weight: 600;
+  color: #303133;
 }
 
 .connection-details {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  font-size: 12px;
-  color: var(--el-text-color-regular);
+  flex-wrap: wrap;
+  gap: 10px 18px;
 }
 
 .connection-info {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  font-size: 13px;
+  color: #606266;
 }
 
 .info-icon {
-  margin-right: 8px;
-  color: var(--el-color-primary);
-  width: 16px;
+  font-size: 14px;
+  color: #909399;
+}
+
+.connection-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.status-tag {
+  min-width: 50px;
+  text-align: center;
 }
 
 .connection-actions {
   display: flex;
-  align-items: center;
   gap: 8px;
-}
-
-.status-tag {
-  flex-shrink: 0;
 }
 
 /* 深色主题适配 */

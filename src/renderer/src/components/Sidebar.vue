@@ -213,7 +213,7 @@ const isSshConnectionActive = (connection) => {
 const isSerialConnectionActive = (connection) => {
   return terminalStore.tabs.some(tab => 
     tab.connection?.type === 'serial' &&
-    tab.connection?.port === connection.port &&
+    tab.connection?.path === connection.path &&
     tab.isConnected
   )
 }

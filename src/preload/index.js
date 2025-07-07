@@ -9,6 +9,7 @@ const api = {
     write: (connectionId, data) => ipcRenderer.invoke('ssh:write', connectionId, data),
     resize: (connectionId, cols, rows) => ipcRenderer.invoke('ssh:resize', connectionId, cols, rows),
     disconnect: (connectionId) => ipcRenderer.invoke('ssh:disconnect', connectionId),
+    getStats: (connectionId) => ipcRenderer.invoke('ssh:get-stats', connectionId),
     startTunnel: (connectionId, tunnelConfig) => ipcRenderer.invoke('ssh:start-tunnel', connectionId, tunnelConfig),
     stopTunnel: (tunnelId) => ipcRenderer.invoke('ssh:stop-tunnel', tunnelId),
     
