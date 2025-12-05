@@ -131,19 +131,46 @@
           </div>
         </div>
         <div class="toolbar-right">
-          <button @click="testCodeBlock" class="toolbar-btn ripple" title="测试代码块">
-            🧪
-          </button>
-          <button @click="toggleTheme" class="toolbar-btn theme-btn ripple" :title="`当前主题: ${getThemeDisplayName()}`">
-            <span class="theme-icon">{{ getThemeIcon() }}</span>
-            <span class="theme-label">{{ getThemeDisplayName() }}</span>
-          </button>
-          <button @click="toggleAllMessagesFold" class="toolbar-btn ripple" title="折叠/展开所有长消息">
-            📄
-          </button>
           <button @click="clearMessages" class="toolbar-btn ripple" title="清空对话">
             🗑️
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 命令确认弹窗 -->
+    <div v-if="showCommandDialog" class="dialog-overlay">
+      <div class="dialog-content">
+        <div class="dialog-header">
+          <h3>确认执行命令</h3>
+          <button class="close-btn" @click="cancelRun">×</button>
+        </div>
+        <div class="dialog-body">
+          <p>即将向终端发送以下命令，请确认：</p>
+          <pre class="command-preview">{{ commandToRun }}</pre>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn btn-secondary" @click="cancelRun">取消</button>
+          <button class="btn btn-primary" @click="confirmRun">执行</button>
+        </div>
+      </div>
+    </div>
+    <!-- 图片 Lightbox -->
+    <div v-if="showLightbox" class="image-lightbox active" data-keyboard-handler="true">
+      <div class="lightbox-backdrop" @click="closeImageLightbox"></div>
+      <div class="lightbox-content">
+        <button class="lightbox-close" @click="closeImageLightbox" title="关闭">×</button>
+        <img :src="lightboxImage.src" :alt="lightboxImage.alt" class="lightbox-image">
+        <div class="lightbox-info">
+          <span class="lightbox-title">{{ lightboxImage.alt || '图片' }}</span>
+          <div class="lightbox-actions">
+            <button class="lightbox-action-btn" @click="downloadImage(lightboxImage.src, lightboxImage.alt)" title="下载图片">
+              📥
+            </button>
+            <button class="lightbox-action-btn" @click="copyImageUrl(lightboxImage.src)" title="复制图片链接">
+              📋
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -151,11 +178,14 @@
 </template>
 
 <script setup>
-import { ref, reactive, nextTick, onMounted, watch, computed } from 'vue'
+import { ref, reactive, nextTick, onMounted, watch, computed, onUnmounted } from 'vue'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import katex from 'katex'
+import DOMPurify from 'dompurify'
+import mermaid from 'mermaid'
 import { useTerminalStore } from '../stores/terminal'
+import OpenAI from 'openai'
 
 // Props
 const props = defineProps({
@@ -177,6 +207,15 @@ const isTyping = ref(false)
 const messagesContainer = ref(null)
 const messageInput = ref(null)
 const selectedModel = ref('claude-3-5-sonnet')
+const showCommandDialog = ref(false)
+const commandToRun = ref('')
+
+// DeepSeek客户端配置
+const deepseekClient = new OpenAI({
+  baseURL: 'https://api.deepseek.com/v1',
+  apiKey: import.meta.env.VITE_DEEPSEEK_API_KEY || '',
+  dangerouslyAllowBrowser: true
+})
 
 // 建议列表
 const suggestions = [
@@ -190,14 +229,24 @@ const suggestions = [
 const availableModels = [
   { value: 'claude-3-5-sonnet', label: 'Claude 3.5 Sonnet' },
   { value: 'gpt-4', label: 'GPT-4' },
-  { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' }
+  { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
+  { value: 'deepseek-chat', label: 'DeepSeek Chat' },
+  { value: 'deepseek-coder', label: 'DeepSeek Coder' }
 ]
 
 // 配置marked
 const renderer = new marked.Renderer()
 
 // 代码块渲染
-renderer.code = function(code, language) {
+renderer.code = function(token) {
+  const code = String(token.text || '')
+  const language = String(token.lang || '')
+
+  // 处理Mermaid图表
+  if (language === 'mermaid') {
+    return `<div class="mermaid-wrapper"><div class="mermaid">${code}</div></div>`
+  }
+
   const validLanguage = language && hljs.getLanguage(language) ? language : 'plaintext';
   const highlighted = hljs.highlight(code, { language: validLanguage }).value;
   
@@ -218,11 +267,15 @@ renderer.code = function(code, language) {
       <div class="code-header">
         <span class="code-language">${validLanguage}</span>
         <div class="code-actions">
-          ${isLongCode ? `<button class="code-fold-btn" onclick="toggleCodeFold('${blockId}')" title="展开/收起代码">
+          <button class="code-run-btn" data-action="run" data-code="${encodeURIComponent(code)}" title="在终端执行">
+            <span class="run-icon">▶</span>
+            <span class="run-text">运行</span>
+          </button>
+          ${isLongCode ? `<button class="code-fold-btn" data-action="fold" data-block-id="${blockId}" title="展开/收起代码">
             <span class="fold-icon">📄</span>
             <span class="fold-text">展开 (${lines.length} 行)</span>
           </button>` : ''}
-          <button class="code-copy-btn" onclick="copyCode(this)" data-code="${encodeURIComponent(code)}" title="复制代码">
+          <button class="code-copy-btn" data-action="copy" data-code="${encodeURIComponent(code)}" title="复制代码">
             <span class="copy-icon">📋</span>
             <span class="copy-text">复制</span>
           </button>
@@ -246,8 +299,31 @@ renderer.code = function(code, language) {
 }
 
 // 表格渲染增强
-renderer.table = function(header, body) {
+renderer.table = function(token) {
   const tableId = `table-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  
+  let header = '';
+  if (token.header && token.header.length) {
+      let cells = '';
+      for (const cellToken of token.header) {
+          cells += this.tablecell(cellToken);
+      }
+      header = `<thead><tr>${cells}</tr></thead>`;
+  }
+  
+  let body = '';
+  if (token.rows && token.rows.length) {
+      body = '<tbody>';
+      for (const row of token.rows) {
+          let cells = '';
+          for (const cellToken of row) {
+              cells += this.tablecell(cellToken);
+          }
+          body += `<tr>${cells}</tr>`;
+      }
+      body += '</tbody>';
+  }
+
   return `
     <div class="table-wrapper" data-table-id="${tableId}">
       <div class="table-toolbar">
@@ -255,18 +331,18 @@ renderer.table = function(header, body) {
           <span class="table-title">数据表格</span>
         </div>
         <div class="table-actions">
-          <button class="table-action-btn" onclick="toggleTableView('${tableId}')" title="切换表格视图">
+          <button class="table-action-btn" data-action="toggle-table" data-table-id="${tableId}" title="切换表格视图">
             <span class="table-view-icon">📱</span>
           </button>
-          <button class="table-action-btn" onclick="copyTable('${tableId}')" title="复制表格">
+          <button class="table-action-btn" data-action="copy-table" data-table-id="${tableId}" title="复制表格">
             <span class="table-copy-icon">📋</span>
           </button>
         </div>
       </div>
       <div class="table-container">
         <table class="markdown-table" id="${tableId}">
-          <thead>${header}</thead>
-          <tbody>${body}</tbody>
+          ${header}
+          ${body}
         </table>
       </div>
     </div>
@@ -274,18 +350,25 @@ renderer.table = function(header, body) {
 }
 
 // 引用块渲染
-renderer.blockquote = function(quote) {
+renderer.blockquote = function(token) {
+  const quote = this.parser.parse(token.tokens)
   return `<blockquote class="markdown-blockquote">${quote}</blockquote>`
 }
 
 // 链接渲染（增加安全性）
-renderer.link = function(href, title, text) {
+renderer.link = function(token) {
+  const href = String(token.href || '')
+  const title = String(token.title || '')
+  const text = this.parser.parseInline(token.tokens)
   const titleAttr = title ? ` title="${title}"` : ''
   return `<a href="${href}" target="_blank" rel="noopener noreferrer"${titleAttr} class="markdown-link">${text}</a>`
 }
 
 // 图片渲染
-renderer.image = function(href, title, text) {
+renderer.image = function(token) {
+  const href = String(token.href || '')
+  const title = String(token.title || '')
+  const text = String(token.text || '')
   const titleAttr = title ? ` title="${title}"` : ''
   const altAttr = text ? ` alt="${text}"` : ''
   const imageId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -296,7 +379,9 @@ renderer.image = function(href, title, text) {
            class="markdown-image" 
            loading="lazy" 
            id="${imageId}"
-           onclick="openImageLightbox('${imageId}', '${href}', '${text || title || ''}')"
+           data-action="zoom-image"
+           data-image-src="${href}"
+           data-image-alt="${text || title || ''}"
            style="cursor: zoom-in;">
       <div class="image-overlay">
         <span class="image-zoom-icon">🔍</span>
@@ -306,28 +391,36 @@ renderer.image = function(href, title, text) {
 }
 
 // 列表项渲染（支持任务列表）
-renderer.listitem = function(text) {
+renderer.listitem = function(token) {
+  let text = this.parser.parse(token.tokens)
+  
   // 检查是否是任务列表
-  const taskMatch = text.match(/^\[([ x])\]\s*(.*)/)
-  if (taskMatch) {
-    const checked = taskMatch[1] === 'x'
-    const content = taskMatch[2]
+  if (token.task) {
+    const checked = token.checked
+    // Remove the checkbox from the text if it was parsed into it?
+    // In marked, if task is true, text usually doesn't contain the checkbox characters if handled correctly?
+    // But wait, `this.parser.parse` renders the content.
+    // If `token.task` is true, `token.tokens` contains the content after the checkbox.
+    
     return `<li class="task-list-item">
       <input type="checkbox" ${checked ? 'checked' : ''} disabled class="task-checkbox">
-      <span class="task-text">${content}</span>
+      <span class="task-text">${text}</span>
     </li>`
   }
   return `<li>${text}</li>`
 }
 
 // 标题渲染（添加锚点）
-renderer.heading = function(text, level) {
-  const escapedText = String(text || '').toLowerCase().replace(/[^\\w-]+/g, '-')
+renderer.heading = function(token) {
+  const text = this.parser.parseInline(token.tokens)
+  const level = token.depth
+  const escapedText = text.toLowerCase().replace(/[^\\w-]+/g, '-')
   return `<h${level} class="markdown-heading markdown-h${level}" id="heading-${escapedText}">${text}</h${level}>`
 }
 
 // 内联代码渲染
-renderer.codespan = function(code) {
+renderer.codespan = function(token) {
+  const code = String(token.text || '')
   return `<code class="markdown-inline-code">${code}</code>`
 }
 
@@ -343,24 +436,27 @@ marked.setOptions({
   xhtml: false,
   silent: true, // 静默模式，避免抛出错误
   sanitize: false, // 不进行HTML清理，因为我们有自己的安全措施
-  pedantic: false // 不严格遵循原版markdown解析器
+  pedantic: false, // 不严格遵循原版markdown解析器
+  headerIds: true,
+  mangle: false
 })
 
-// 全局复制代码函数
-window.copyCode = async function(button) {
-  const code = decodeURIComponent(button.dataset.code)
+// Lightbox state
+const showLightbox = ref(false)
+const lightboxImage = reactive({ src: '', alt: '' })
+
+// Helper functions (refactored from window.*)
+const copyCode = async (code, button) => {
   const iconSpan = button.querySelector('.copy-icon')
   const textSpan = button.querySelector('.copy-text')
   
   try {
-    await navigator.clipboard.writeText(code)
-    // 显示复制成功状态
+    await navigator.clipboard.writeText(decodeURIComponent(code))
     if (iconSpan) iconSpan.textContent = '✓'
     if (textSpan) textSpan.textContent = '已复制'
     button.style.color = '#10b981'
     button.style.borderColor = '#10b981'
     
-    // 2秒后恢复原状态
     setTimeout(() => {
       if (iconSpan) iconSpan.textContent = '📋'
       if (textSpan) textSpan.textContent = '复制'
@@ -369,7 +465,6 @@ window.copyCode = async function(button) {
     }, 2000)
   } catch (err) {
     console.error('复制失败:', err)
-    // 显示复制失败状态
     if (iconSpan) iconSpan.textContent = '✗'
     if (textSpan) textSpan.textContent = '失败'
     button.style.color = '#ef4444'
@@ -384,8 +479,7 @@ window.copyCode = async function(button) {
   }
 }
 
-// 全局表格视图切换函数
-window.toggleTableView = function(tableId) {
+const toggleTableView = (tableId) => {
   const tableWrapper = document.querySelector(`[data-table-id="${tableId}"]`)
   if (!tableWrapper) return
   
@@ -397,24 +491,21 @@ window.toggleTableView = function(tableId) {
   const isCardView = tableContainer.classList.contains('card-view')
   
   if (isCardView) {
-    // 切换回表格视图
     tableContainer.classList.remove('card-view')
     viewIcon.textContent = '📱'
     tableWrapper.setAttribute('title', '切换为卡片视图')
   } else {
-    // 切换为卡片视图
     tableContainer.classList.add('card-view')
     viewIcon.textContent = '📊'
     tableWrapper.setAttribute('title', '切换为表格视图')
   }
 }
 
-// 全局表格复制函数
-window.copyTable = function(tableId) {
+const copyTable = (tableId, button) => {
   const table = document.getElementById(tableId)
   if (!table) return
   
-  const copyIcon = document.querySelector(`[data-table-id="${tableId}"] .table-copy-icon`)
+  const copyIcon = button.querySelector('.table-copy-icon')
   
   try {
     let tableText = ''
@@ -427,11 +518,9 @@ window.copyTable = function(tableId) {
     })
     
     navigator.clipboard.writeText(tableText).then(() => {
-      // 显示复制成功状态
       if (copyIcon) {
         copyIcon.textContent = '✓'
         copyIcon.style.color = '#10b981'
-        
         setTimeout(() => {
           copyIcon.textContent = '📋'
           copyIcon.style.color = ''
@@ -442,7 +531,6 @@ window.copyTable = function(tableId) {
       if (copyIcon) {
         copyIcon.textContent = '✗'
         copyIcon.style.color = '#ef4444'
-        
         setTimeout(() => {
           copyIcon.textContent = '📋'
           copyIcon.style.color = ''
@@ -454,83 +542,7 @@ window.copyTable = function(tableId) {
   }
 }
 
-// 全局图片lightbox函数
-window.openImageLightbox = function(imageId, src, alt) {
-  // 创建lightbox容器
-  const lightbox = document.createElement('div')
-  lightbox.className = 'image-lightbox'
-  lightbox.innerHTML = `
-    <div class="lightbox-backdrop" onclick="closeImageLightbox()"></div>
-    <div class="lightbox-content">
-      <button class="lightbox-close" onclick="closeImageLightbox()" title="关闭">×</button>
-      <img src="${src}" alt="${alt}" class="lightbox-image">
-      <div class="lightbox-info">
-        <span class="lightbox-title">${alt || '图片'}</span>
-        <div class="lightbox-actions">
-          <button class="lightbox-action-btn" onclick="downloadImage('${src}', '${alt || 'image'}')" title="下载图片">
-            📥
-          </button>
-          <button class="lightbox-action-btn" onclick="copyImageUrl('${src}')" title="复制图片链接">
-            📋
-          </button>
-        </div>
-      </div>
-    </div>
-  `
-  
-  document.body.appendChild(lightbox)
-  
-  // 添加动画效果
-  requestAnimationFrame(() => {
-    lightbox.classList.add('active')
-  })
-  
-  // 阻止body滚动
-  document.body.style.overflow = 'hidden'
-  
-  // 键盘事件
-  const handleKeyboard = (e) => {
-    if (e.key === 'Escape') {
-      closeImageLightbox()
-    }
-  }
-  
-  document.addEventListener('keydown', handleKeyboard)
-  lightbox.dataset.keyboardHandler = 'true'
-}
-
-window.closeImageLightbox = function() {
-  const lightbox = document.querySelector('.image-lightbox')
-  if (lightbox) {
-    lightbox.classList.remove('active')
-    setTimeout(() => {
-      lightbox.remove()
-      document.body.style.overflow = ''
-    }, 300)
-  }
-  
-  // 移除键盘事件监听
-  document.removeEventListener('keydown', handleKeyboard)
-}
-
-window.downloadImage = function(src, filename) {
-  const link = document.createElement('a')
-  link.href = src
-  link.download = filename || 'image'
-  link.click()
-}
-
-window.copyImageUrl = function(src) {
-  navigator.clipboard.writeText(src).then(() => {
-    // 显示复制成功提示
-    console.log('图片链接已复制')
-  }).catch(err => {
-    console.error('复制失败:', err)
-  })
-}
-
-// 全局代码折叠函数
-window.toggleCodeFold = function(blockId) {
+const toggleCodeFold = (blockId) => {
   const blockWrapper = document.querySelector(`[data-block-id="${blockId}"]`)
   if (!blockWrapper) return
   
@@ -545,14 +557,12 @@ window.toggleCodeFold = function(blockId) {
   const isExpanded = fullDiv.style.display !== 'none'
   
   if (isExpanded) {
-    // 收起代码
     fullDiv.style.display = 'none'
     previewDiv.style.display = 'flex'
-    foldIcon.textContent = '📄'
+    foldIcon.textContent = '�'
     foldText.textContent = `展开 (${fullDiv.querySelectorAll('.line-number').length} 行)`
     foldBtn.setAttribute('title', '展开代码')
   } else {
-    // 展开代码
     fullDiv.style.display = 'flex'
     previewDiv.style.display = 'none'
     foldIcon.textContent = '📃'
@@ -561,8 +571,120 @@ window.toggleCodeFold = function(blockId) {
   }
 }
 
+// Lightbox methods
+const openImageLightbox = (src, alt) => {
+  lightboxImage.src = src
+  lightboxImage.alt = alt
+  showLightbox.value = true
+}
+
+const closeImageLightbox = () => {
+  showLightbox.value = false
+}
+
+const downloadImage = (src, filename) => {
+  const link = document.createElement('a')
+  link.href = src
+  link.download = filename || 'image'
+  link.click()
+}
+
+const copyImageUrl = (src) => {
+  navigator.clipboard.writeText(src).then(() => {
+    console.log('图片链接已复制')
+  }).catch(err => {
+    console.error('复制失败:', err)
+  })
+}
+
+// Event Delegation Handler
+const handleMessageClick = (event) => {
+  // Handle Button Clicks
+  const button = event.target.closest('button')
+  if (button) {
+    const action = button.dataset.action
+    if (!action) return
+
+    switch (action) {
+      case 'fold':
+        toggleCodeFold(button.dataset.blockId)
+        break
+      case 'copy':
+        copyCode(button.dataset.code, button)
+        break
+      case 'run':
+        handleRunCode(decodeURIComponent(button.dataset.code))
+        break
+      case 'toggle-table':
+        toggleTableView(button.dataset.tableId)
+        break
+      case 'copy-table':
+        copyTable(button.dataset.tableId, button)
+        break
+    }
+    return
+  }
+
+  // Handle Image Clicks
+  const image = event.target.closest('img')
+  if (image && image.dataset.action === 'zoom-image') {
+    openImageLightbox(image.dataset.imageSrc, image.dataset.imageAlt)
+  }
+}
+
+// 运行代码逻辑
+const handleRunCode = (code) => {
+  commandToRun.value = code
+  showCommandDialog.value = true
+}
+
+// 确认运行
+const confirmRun = async () => {
+  const result = await terminalStore.sendCommand(commandToRun.value)
+  if (result.success) {
+    showNotification('命令已发送到终端')
+  } else {
+    showNotification(`发送失败: ${result.message}`)
+  }
+  showCommandDialog.value = false
+}
+
+// 取消运行
+const cancelRun = () => {
+  showCommandDialog.value = false
+}
+
+
+
+// 节流函数
+const throttle = (func, limit) => {
+  let inThrottle
+  return function(...args) {
+    if (!inThrottle) {
+      func.apply(this, args)
+      inThrottle = true
+      setTimeout(() => inThrottle = false, limit)
+    }
+  }
+}
+
+// 渲染Mermaid图表
+const renderMermaid = async () => {
+  await nextTick()
+  const mermaidNodes = document.querySelectorAll('.mermaid')
+  if (mermaidNodes.length === 0) return
+
+  try {
+    await mermaid.run({
+      nodes: mermaidNodes
+    })
+  } catch (error) {
+    console.error('Mermaid rendering failed:', error)
+  }
+}
+
 // 格式化消息（增强数学公式支持和错误处理）
-const formatMessage = (content) => {
+const formatMessage = async (content) => {
   if (!content || typeof content !== 'string') {
     console.warn('Invalid content for formatting:', content)
     return content || ''
@@ -745,19 +867,40 @@ const formatMessage = (content) => {
         return `<div class="markdown-error">处理后的内容为空：<pre>${content}</pre></div>`
       }
       
-      const result = marked(processedContent)
+      const result = await marked(processedContent)
       
       // 验证结果是否为空
       if (!result || result.trim() === '') {
         console.warn('Marked returned empty result for:', processedContent.substring(0, 100))
         return `<div class="markdown-error">内容解析失败，显示原文：<pre>${content}</pre></div>`
       }
+
+      // HTML净化
+      const sanitized = DOMPurify.sanitize(result, {
+        ADD_TAGS: ['iframe', 'button', 'input', 'mark', 'kbd', 'details', 'summary', 'math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'msqrt', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
+        ADD_ATTR: ['target', 'allow', 'class', 'style', 'data-block-id', 'data-table-id', 'id', 'data-language', 'data-code', 'checked', 'disabled', 'data-color', 'xmlns', 'display', 'viewBox', 'd', 'fill', 'height', 'width', 'data-action', 'data-image-src', 'data-image-alt']
+      })
       
-      return result
+      return sanitized
     } catch (markedError) {
       console.error('Marked parsing error:', markedError)
       console.error('ProcessedContent type:', typeof processedContent)
       console.error('ProcessedContent value:', processedContent)
+      console.error('Original content:', content)
+      
+      // 如果是renderer函数的错误，提供更有针对性的信息
+      if (markedError.message.includes('match')) {
+        return `<div class="markdown-error">
+          <h4>Markdown渲染错误</h4>
+          <p>错误信息：${markedError.message}</p>
+          <p>这可能是由于列表项或其他元素包含非字符串内容导致的。</p>
+          <details>
+            <summary>原始内容</summary>
+            <pre>${content}</pre>
+          </details>
+        </div>`
+      }
+      
       return `<div class="markdown-error">
         <h4>Markdown解析错误</h4>
         <p>错误信息：${markedError.message}</p>
@@ -789,13 +932,20 @@ const addMessage = (type, content) => {
   // 确保content是字符串类型
   const safeContent = String(content || '')
   
-  const message = {
+  const message = reactive({
     id: Date.now(),
     type,
     content: safeContent,
-    formattedContent: type === 'ai' ? formatMessage(safeContent) : safeContent,
+    formattedContent: type === 'ai' ? '' : safeContent, // AI消息初始为空，等待格式化
     timestamp: new Date(),
     folded: type === 'user' && safeContent.length > 200 // 超过200字符自动折叠
+  })
+
+  if (type === 'ai') {
+    formatMessage(safeContent).then(formatted => {
+      message.formattedContent = formatted
+      nextTick(() => renderMermaid())
+    })
   }
   
   messages.push(message)
@@ -821,8 +971,13 @@ const sendMessage = async () => {
   isTyping.value = true
   
   try {
-    // 模拟AI响应
-    await simulateAIResponse(userMessage)
+    // 根据选择的模型调用不同的AI服务
+    if (selectedModel.value.startsWith('deepseek')) {
+      await callDeepSeekAPI(userMessage)
+    } else {
+      // 模拟其他AI响应
+      await simulateAIResponse(userMessage)
+    }
   } catch (error) {
     console.error('AI响应错误:', error)
     addMessage('ai', '抱歉，我遇到了一些问题。请稍后再试。')
@@ -832,6 +987,87 @@ const sendMessage = async () => {
   
   // 触发消息更新事件
   emit('messages-updated', messages)
+}
+
+// 调用DeepSeek API
+const callDeepSeekAPI = async (userMessage) => {
+  try {
+    // 检查API密钥
+    if (!deepseekClient.apiKey) {
+      throw new Error('DeepSeek API密钥未配置，请在环境变量中设置 VITE_DEEPSEEK_API_KEY')
+    }
+    
+    // 调用DeepSeek API
+    const completion = await deepseekClient.chat.completions.create({
+      messages: [
+        { role: "system", content: "你是一位网络工程师专家，精通锐捷（Ruijie）网络设备的配置和管理。请提供专业的命令和配置建议。" },
+        { role: "user", content: userMessage }
+      ],
+      model: selectedModel.value, // deepseek-chat 或 deepseek-coder
+      max_tokens: 4000,
+      temperature: 0.7,
+      stream: true
+    })
+    
+    // 处理流式响应
+    const streamMessageId = Date.now().toString()
+    // 添加流式消息占位符
+    const streamMessage = {
+      id: streamMessageId,
+      type: 'ai',
+      content: '',
+      formattedContent: '',
+      timestamp: new Date().toISOString()
+    }
+    messages.push(streamMessage)
+
+    // 增量处理流式数据
+    const updateStream = throttle(async (content) => {
+      streamMessage.formattedContent = await formatMessage(content)
+      nextTick(() => {
+        if (messagesContainer.value) {
+          messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+        }
+        renderMermaid()
+      })
+    }, 100)
+
+    for await (const chunk of completion) {
+      const delta = chunk.choices[0]?.delta?.content || ''
+      if (delta) {
+        streamMessage.content += delta
+        updateStream(streamMessage.content)
+      }
+    }
+
+    // 流式结束后确保最终渲染
+    streamMessage.formattedContent = await formatMessage(streamMessage.content)
+    renderMermaid()
+
+    // 流式结束后验证内容
+    if (!streamMessage.content.trim()) {
+      streamMessage.content = '抱歉，没有收到响应内容'
+      streamMessage.formattedContent = formatMessage(streamMessage.content)
+    }
+    
+  } catch (error) {
+    console.error('DeepSeek API 错误:', error)
+    let errorMessage = '抱歉，调用DeepSeek API时发生错误'
+    
+    if (error.message.includes('API密钥')) {
+      errorMessage = error.message
+    } else if (error.message.includes('401')) {
+      errorMessage = 'DeepSeek API密钥无效或已过期'
+    } else if (error.message.includes('429')) {
+      errorMessage = 'DeepSeek API请求过于频繁，请稍后再试'
+    } else if (error.message.includes('500')) {
+      errorMessage = 'DeepSeek服务器内部错误，请稍后再试'
+    } else if (error.message.includes('Content Security Policy') || error.message.includes('Failed to fetch')) {
+      errorMessage = '无法连接到DeepSeek API，请检查网络连接和CSP配置'
+    }
+    
+    addMessage('ai', errorMessage)
+  }
 }
 
 // 模拟AI响应
@@ -1233,14 +1469,6 @@ const handleEnterKey = (event) => {
   }
 }
 
-// 处理消息点击（如代码复制）
-const handleMessageClick = (event) => {
-  // 处理代码复制按钮点击
-  if (event.target.classList.contains('code-copy-btn')) {
-    event.preventDefault()
-  }
-}
-
 // 滚动到底部
 const scrollToBottom = () => {
   if (messagesContainer.value) {
@@ -1382,6 +1610,13 @@ onMounted(() => {
   
   // 初始化代码高亮主题
   updateCodeHighlightTheme()
+
+  // 初始化Mermaid
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: terminalStore.currentTheme === 'dark' ? 'dark' : 'default',
+    securityLevel: 'loose',
+  })
   
   // 加载KaTeX CSS
   const loadKatexCSS = () => {
@@ -1394,7 +1629,18 @@ onMounted(() => {
         console.log('KaTeX CSS loaded successfully')
       }
       link.onerror = () => {
-        console.error('Failed to load KaTeX CSS')
+        console.warn('Failed to load KaTeX CSS from cdnjs, trying jsDelivr...')
+        // 尝试备用CDN
+        const fallbackLink = document.createElement('link')
+        fallbackLink.rel = 'stylesheet'
+        fallbackLink.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css'
+        fallbackLink.onload = () => {
+          console.log('KaTeX CSS loaded successfully from jsDelivr')
+        }
+        fallbackLink.onerror = () => {
+          console.error('Failed to load KaTeX CSS from both CDNs')
+        }
+        document.head.appendChild(fallbackLink)
       }
       document.head.appendChild(link)
     }
@@ -2234,6 +2480,16 @@ onMounted(() => {
 }
 
 /* 表格样式 */
+.markdown-content :deep(.mermaid-wrapper) {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0;
+  padding: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
 .markdown-content :deep(.table-wrapper) {
   margin: 16px 0;
   border-radius: 8px;
@@ -2466,7 +2722,7 @@ onMounted(() => {
 }
 
 /* Lightbox样式 */
-:deep(.image-lightbox) {
+.image-lightbox {
   position: fixed;
   top: 0;
   left: 0;
@@ -2478,12 +2734,12 @@ onMounted(() => {
   transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 
-:deep(.image-lightbox.active) {
+.image-lightbox.active {
   opacity: 1;
   visibility: visible;
 }
 
-:deep(.lightbox-backdrop) {
+.lightbox-backdrop {
   position: absolute;
   top: 0;
   left: 0;
@@ -2493,7 +2749,7 @@ onMounted(() => {
   backdrop-filter: blur(5px);
 }
 
-:deep(.lightbox-content) {
+.lightbox-content {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -2506,7 +2762,7 @@ onMounted(() => {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }
 
-:deep(.lightbox-close) {
+.lightbox-close {
   position: absolute;
   top: 10px;
   right: 10px;
@@ -2522,18 +2778,18 @@ onMounted(() => {
   transition: background 0.2s;
 }
 
-:deep(.lightbox-close:hover) {
+.lightbox-close:hover {
   background: rgba(0, 0, 0, 0.9);
 }
 
-:deep(.lightbox-image) {
+.lightbox-image {
   max-width: 100%;
   max-height: 80vh;
   display: block;
   object-fit: contain;
 }
 
-:deep(.lightbox-info) {
+.lightbox-info {
   padding: 12px 16px;
   background: var(--bg-secondary);
   border-top: 1px solid var(--border-color);
@@ -2542,18 +2798,18 @@ onMounted(() => {
   align-items: center;
 }
 
-:deep(.lightbox-title) {
+.lightbox-title {
   font-size: 14px;
   font-weight: 500;
   color: var(--text-primary);
 }
 
-:deep(.lightbox-actions) {
+.lightbox-actions {
   display: flex;
   gap: 8px;
 }
 
-:deep(.lightbox-action-btn) {
+.lightbox-action-btn {
   background: none;
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
@@ -2564,7 +2820,7 @@ onMounted(() => {
   font-size: 12px;
 }
 
-:deep(.lightbox-action-btn:hover) {
+.lightbox-action-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
   border-color: var(--border-hover);
@@ -2572,16 +2828,16 @@ onMounted(() => {
 
 /* 移动端lightbox适配 */
 @media (max-width: 768px) {
-  :deep(.lightbox-content) {
+  .lightbox-content {
     max-width: 95%;
     max-height: 95%;
   }
   
-  :deep(.lightbox-image) {
+  .lightbox-image {
     max-height: 70vh;
   }
   
-  :deep(.lightbox-info) {
+  .lightbox-info {
     padding: 8px 12px;
   }
 }
@@ -2780,25 +3036,161 @@ onMounted(() => {
   color: var(--text-primary);
   padding: 2px 6px;
   border-radius: 4px;
-  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
-  font-size: 0.85em;
   border: 1px solid var(--border-color);
   border-bottom: 2px solid var(--border-color);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 0.9em;
 }
 
-.markdown-content :deep(.markdown-badge) {
-  display: inline-block;
-  padding: 2px 8px;
+/* 运行按钮样式 */
+.markdown-content :deep(.code-run-btn) {
+  background: var(--accent-color);
+  border: 1px solid var(--accent-color);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 8px;
+}
+
+.markdown-content :deep(.code-run-btn:hover) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.markdown-content :deep(.code-run-btn .run-icon) {
+  font-size: 10px;
+}
+
+/* 弹窗样式 */
+.dialog-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.dialog-content {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
-  font-size: 0.8em;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  animation: slideIn 0.2s ease;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.dialog-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.close-btn:hover {
+  color: var(--text-primary);
+}
+
+.dialog-body {
+  padding: 20px;
+}
+
+.command-preview {
+  background: var(--bg-tertiary);
+  padding: 12px;
+  border-radius: 6px;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 10px;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.dialog-footer {
+  padding: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.btn-secondary {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-hover);
+}
+
+.btn-primary {
   background: var(--accent-color);
   color: white;
-  margin: 0 2px;
 }
+
+.btn-primary:hover {
+    background: var(--accent-hover);
+  }
+
+  .markdown-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--accent-color);
+    color: white;
+    margin: 0 2px;
+  }
 
 .markdown-content :deep(.markdown-badge[data-color="red"]) {
   background: #ef4444;

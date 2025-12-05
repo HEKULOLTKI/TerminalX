@@ -411,6 +411,30 @@ export const useTerminalStore = defineStore('terminal', () => {
     showSidebar.value = false
   }
 
+  // 发送命令到当前活跃终端
+  const sendCommand = async (command) => {
+    const activeTab = getActiveTab()
+    if (!activeTab || !activeTab.isConnected) {
+      return { success: false, message: '终端未连接' }
+    }
+
+    try {
+      if (activeTab.ssh) {
+        // SSH连接
+        await sshService.write(activeTab.ssh.connectionId, command + '\n')
+      } else if (activeTab.connection && activeTab.connection.type === 'serial' && activeTab.connectionId) {
+        // 串口连接
+        await serialService.write(activeTab.connectionId, command + '\n')
+      } else {
+        return { success: false, message: '未知连接类型' }
+      }
+      return { success: true }
+    } catch (error) {
+      console.error('发送命令失败:', error)
+      return { success: false, message: error.message }
+    }
+  }
+
   return {
     activeTabId,
     tabs,
@@ -438,5 +462,6 @@ export const useTerminalStore = defineStore('terminal', () => {
     toggleSidebar,
     setSidebarMode,
     hideSidebar,
+    sendCommand
   }
 }) 

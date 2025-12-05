@@ -61,6 +61,17 @@
       
       <!-- 右侧AI聊天区域 -->
       <div class="ai-section" :class="{ 'collapsed': isChatCollapsed }" :style="{ width: aiWidth }">
+        <!-- 展开按钮 - 仅在折叠时显示 -->
+        <button 
+          class="toggle-chat-btn" 
+          v-show="isChatCollapsed"
+          @click="toggleChat"
+          title="展开AI聊天区域"
+        >
+          <el-icon><ChatLineSquare /></el-icon>
+          <span>AI助手</span>
+        </button>
+        
         <!-- AI聊天顶部控制栏 -->
         <div class="ai-header" v-show="!isChatCollapsed">
           <div class="ai-header-left">
@@ -148,7 +159,7 @@ import TitleBar from './components/TitleBar.vue'
 import Sidebar from './components/Sidebar.vue'
 import TabManager from './components/TabManager.vue'
 import AIChat from './components/AIChat.vue'
-import { Monitor, Setting, Plus, Clock, Close, Delete } from '@element-plus/icons-vue'
+import { Monitor, Setting, Plus, Clock, Close, Delete, ChatLineSquare } from '@element-plus/icons-vue'
 import './assets/layout.css'
 
 const terminalStore = useTerminalStore()
@@ -1263,6 +1274,10 @@ html, body, #app {
   transition: all 0.3s;
 }
 
+.toggle-chat-btn {
+  transition: all 0.3s ease;
+}
+
 .toggle-chat-btn:hover {
   background: var(--el-fill-color-light);
   border-color: var(--el-color-primary);
@@ -1276,6 +1291,17 @@ html, body, #app {
   height: 120px;
   width: auto;
   font-size: 11px;
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  border-radius: 6px 0 0 6px;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  background: var(--el-bg-color-page);
+  border: 1px solid var(--el-border-color);
+  border-right: none;
 }
 
 .ai-section.collapsed .toggle-chat-btn span {
@@ -1360,7 +1386,12 @@ html, body, #app {
   box-shadow: 0 4px 12px rgba(64, 158, 255, 0.4), 0 0 0 2px rgba(64, 158, 255, 0.6);
 }
 
-
+/* 深色主题下的折叠按钮 */
+.app.dark-theme .ai-section.collapsed .toggle-chat-btn {
+  background: linear-gradient(135deg, #2d2d30 0%, #3c3c3c 100%);
+  border-color: #4a4a4a;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.3);
+}
 
 /* 清心主题样式 */
 .app.fresh-theme {
@@ -1404,6 +1435,13 @@ html, body, #app {
 .app.fresh-theme .resize-handle.resizing .resize-handle-indicator {
   background: linear-gradient(135deg, #4285f4 0%, #1976d2 100%);
   box-shadow: 0 0 16px rgba(66, 133, 244, 0.6);
+}
+
+/* 清心主题下的折叠按钮 */
+.app.fresh-theme .ai-section.collapsed .toggle-chat-btn {
+  background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
+  border-color: #d6e9ff;
+  box-shadow: -2px 0 8px rgba(66, 133, 244, 0.15);
 }
 
 
