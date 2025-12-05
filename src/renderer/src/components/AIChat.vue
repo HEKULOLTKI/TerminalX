@@ -58,6 +58,14 @@
                 <div class="user-text">
                   {{ message.folded ? getMessagePreview(message.content) : message.content }}
                 </div>
+                <!-- 显示关联的文件 -->
+                <div v-if="message.files && message.files.length > 0" class="message-files">
+                  <div v-for="(file, index) in message.files" :key="index" class="message-file-tag">
+                    <span class="file-icon">📄</span>
+                    <span class="file-name">{{ file.name }}</span>
+                    <span class="file-size">{{ formatFileSize(file.size) }}</span>
+                  </div>
+                </div>
               </div>
             </div>
             
@@ -97,8 +105,35 @@
 
     <!-- 输入区域 -->
     <div class="input-container">
+      <!-- 文件预览区域 -->
+      <div v-if="selectedFiles.length > 0" class="file-preview-area">
+        <div v-for="(file, index) in selectedFiles" :key="index" class="file-tag">
+          <span class="file-icon">📄</span>
+          <span class="file-name">{{ file.name }}</span>
+          <span class="file-size">{{ formatFileSize(file.size) }}</span>
+          <button class="file-remove" @click="removeFile(index)" title="移除文件">×</button>
+        </div>
+      </div>
+
       <div class="input-wrapper">
         <div class="input-area">
+          <!-- 文件上传按钮 -->
+          <input 
+            type="file" 
+            ref="fileInput" 
+            @change="handleFileSelect" 
+            style="display: none" 
+            multiple
+          >
+          <button 
+            class="upload-btn ripple"
+            @click="triggerFileUpload"
+            title="上传文件"
+            :disabled="isTyping"
+          >
+            📎
+          </button>
+
           <textarea
             ref="messageInput"
             v-model="newMessage"
@@ -203,6 +238,8 @@ const terminalStore = useTerminalStore()
 // 状态管理
 const messages = reactive([])
 const newMessage = ref('')
+const selectedFiles = reactive([])
+const fileInput = ref(null)
 const isTyping = ref(false)
 const messagesContainer = ref(null)
 const messageInput = ref(null)
@@ -928,7 +965,7 @@ const formatMessage = async (content) => {
 }
 
 // 添加消息
-const addMessage = (type, content) => {
+const addMessage = (type, content, files = []) => {
   // 确保content是字符串类型
   const safeContent = String(content || '')
   
@@ -936,6 +973,7 @@ const addMessage = (type, content) => {
     id: Date.now(),
     type,
     content: safeContent,
+    files: files,
     formattedContent: type === 'ai' ? '' : safeContent, // AI消息初始为空，等待格式化
     timestamp: new Date(),
     folded: type === 'user' && safeContent.length > 200 // 超过200字符自动折叠
@@ -957,15 +995,96 @@ const addMessage = (type, content) => {
   return message
 }
 
+// 文件处理
+const triggerFileUpload = () => {
+  fileInput.value.click()
+}
+
+const handleFileSelect = async (event) => {
+  const files = Array.from(event.target.files)
+  if (files.length === 0) return
+
+  for (const file of files) {
+    // 简单检查文件大小 (例如 2MB 限制)
+    if (file.size > 2 * 1024 * 1024) {
+      showNotification(`文件 ${file.name} 太大，请上传小于 2MB 的文件`)
+      continue
+    }
+
+    // 检查是否已存在
+    if (selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
+      continue
+    }
+
+    try {
+      const content = await readFileContent(file)
+      selectedFiles.push({
+        name: file.name,
+        content: content,
+        size: file.size
+      })
+    } catch (error) {
+      console.error(`读取文件 ${file.name} 失败:`, error)
+      showNotification(`读取文件 ${file.name} 失败`)
+    }
+  }
+  
+  // 重置 input 以便重复选择同一文件
+  event.target.value = ''
+}
+
+const readFileContent = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => resolve(e.target.result)
+    reader.onerror = (e) => reject(e)
+    // 默认按文本读取，如果需要支持图片预览可能需要 readAsDataURL
+    reader.readAsText(file)
+  })
+}
+
+const removeFile = (index) => {
+  selectedFiles.splice(index, 1)
+}
+
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
 // 发送消息
 const sendMessage = async () => {
-  if (!newMessage.value.trim() || isTyping.value) return
+  if ((!newMessage.value.trim() && selectedFiles.length === 0) || isTyping.value) return
   
-  const userMessage = newMessage.value.trim()
+  let displayContent = newMessage.value.trim()
+  let apiContent = displayContent
+  const currentFiles = selectedFiles.map(f => ({...f})) // Copy files
+  
+  // 处理上传的文件
+  if (currentFiles.length > 0) {
+    const fileContents = currentFiles.map(file => {
+      return `\n--- 文件名: ${file.name} ---\n${file.content}\n--- 文件结束 ---\n`
+    }).join('\n')
+    
+    if (apiContent) {
+      apiContent += '\n\n附带文件内容：\n' + fileContents
+    } else {
+      apiContent = '附带文件内容：\n' + fileContents
+      // 如果只有文件没有文字，显示提示
+      if (!displayContent) displayContent = '📄 发送了文件'
+    }
+    
+    // 清空已选文件
+    selectedFiles.splice(0, selectedFiles.length)
+  }
+
   newMessage.value = ''
   
   // 添加用户消息
-  addMessage('user', userMessage)
+  addMessage('user', displayContent, currentFiles)
   
   // 显示输入中状态
   isTyping.value = true
@@ -973,10 +1092,10 @@ const sendMessage = async () => {
   try {
     // 根据选择的模型调用不同的AI服务
     if (selectedModel.value.startsWith('deepseek')) {
-      await callDeepSeekAPI(userMessage)
+      await callDeepSeekAPI(apiContent)
     } else {
       // 模拟其他AI响应
-      await simulateAIResponse(userMessage)
+      await simulateAIResponse(apiContent)
     }
   } catch (error) {
     console.error('AI响应错误:', error)
@@ -1072,8 +1191,8 @@ const callDeepSeekAPI = async (userMessage) => {
 
 // 模拟AI响应
 const simulateAIResponse = async (userMessage) => {
-  // 模拟延迟
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  // 模拟网络延迟
+  await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 500))
   
   let response = ''
   
@@ -1299,7 +1418,41 @@ print(greet("World"))
 *希望这些信息对您有帮助！*`
   }
   
-  addMessage('ai', response)
+  // 流式输出模拟
+  const streamMessageId = Date.now().toString()
+  const message = reactive({
+    id: streamMessageId,
+    type: 'ai',
+    content: '',
+    formattedContent: '',
+    timestamp: new Date(),
+    folded: false
+  })
+  messages.push(message)
+
+  // 增量处理流式数据
+  const updateStream = throttle(async (content) => {
+    message.formattedContent = await formatMessage(content)
+    nextTick(() => {
+      if (messagesContainer.value) {
+        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+      }
+      renderMermaid()
+    })
+  }, 50)
+
+  // 模拟打字效果
+  const chars = response.split('')
+  for (let i = 0; i < chars.length; i++) {
+    message.content += chars[i]
+    updateStream(message.content)
+    
+    // 随机打字延迟 (10-30ms)
+    await new Promise(resolve => setTimeout(resolve, 10 + Math.random() * 20))
+  }
+  
+  // 最终渲染
+  message.formattedContent = await formatMessage(message.content)
   
   // 确保代码块渲染完成后初始化折叠功能
   await nextTick()
@@ -1307,6 +1460,8 @@ print(greet("World"))
     // 检查是否有新的代码块需要初始化
     const newCodeBlocks = document.querySelectorAll('.code-block-wrapper[data-block-id]')
     console.log('发现代码块数量:', newCodeBlocks.length)
+    renderMermaid()
+    scrollToBottom()
   }, 100)
 }
 
@@ -1343,7 +1498,11 @@ const regenerateMessage = async (message) => {
   isTyping.value = true
   
   try {
-    await simulateAIResponse(userMessage.content)
+    if (selectedModel.value.startsWith('deepseek')) {
+      await callDeepSeekAPI(userMessage.content)
+    } else {
+      await simulateAIResponse(userMessage.content)
+    }
   } catch (error) {
     console.error('重新生成失败:', error)
     addMessage('ai', '抱歉，重新生成失败。')
@@ -3492,5 +3651,114 @@ onMounted(() => {
   .message-text :deep(.markdown-table th, .markdown-table td) {
     border: 1px solid #ccc;
   }
+}
+
+/* File Upload Styles */
+.file-preview-area {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  border-radius: 8px 8px 0 0;
+}
+
+.file-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.file-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-size {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.file-remove {
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 14px;
+  margin-left: 4px;
+  line-height: 1;
+}
+
+.file-remove:hover {
+  color: #ef4444;
+}
+
+.upload-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  margin-right: 4px;
+}
+
+.upload-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.upload-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.input-area {
+  display: flex;
+  align-items: flex-end;
+}
+
+/* Message File Styles */
+.message-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.user-message-content .message-files {
+  border-top-color: rgba(255, 255, 255, 0.2);
+}
+
+.message-file-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  font-size: 12px;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.message-file-tag .file-name {
+  max-width: 200px;
 }
 </style>
