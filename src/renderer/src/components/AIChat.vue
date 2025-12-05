@@ -1131,13 +1131,14 @@ const callDeepSeekAPI = async (userMessage) => {
     // 处理流式响应
     const streamMessageId = Date.now().toString()
     // 添加流式消息占位符
-    const streamMessage = {
+    const streamMessage = reactive({
       id: streamMessageId,
       type: 'ai',
       content: '',
       formattedContent: '',
-      timestamp: new Date().toISOString()
-    }
+      timestamp: new Date(),
+      folded: false
+    })
     messages.push(streamMessage)
 
     // 增量处理流式数据
@@ -1498,10 +1499,29 @@ const regenerateMessage = async (message) => {
   isTyping.value = true
   
   try {
+    // 重建包含文件的完整消息内容
+    let apiContent = userMessage.content
+    if (userMessage.files && userMessage.files.length > 0) {
+      const fileContents = userMessage.files.map(file => {
+        return `\n--- 文件名: ${file.name} ---\n${file.content}\n--- 文件结束 ---\n`
+      }).join('\n')
+      
+      // 如果消息内容是占位符，则先清空
+      if (apiContent === '📄 发送了文件') {
+        apiContent = ''
+      }
+      
+      if (apiContent) {
+        apiContent += '\n\n附带文件内容：\n' + fileContents
+      } else {
+        apiContent = '附带文件内容：\n' + fileContents
+      }
+    }
+
     if (selectedModel.value.startsWith('deepseek')) {
-      await callDeepSeekAPI(userMessage.content)
+      await callDeepSeekAPI(apiContent)
     } else {
-      await simulateAIResponse(userMessage.content)
+      await simulateAIResponse(apiContent)
     }
   } catch (error) {
     console.error('重新生成失败:', error)
